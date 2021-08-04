@@ -24,6 +24,7 @@ import { Icon } from "../Icon";
 import { EditableRow, StaticRow } from "../Trove/Editor";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { InfoIcon } from "../InfoIcon";
+import { justSpStyle } from "./Stability"
 
 const select = ({ lusdBalance, lusdInStabilityPool, stabilityDeposit }: LiquityStoreState) => ({
   lusdBalance,
@@ -36,6 +37,7 @@ type StabilityDepositEditorProps = {
   editedUSD: Decimal;
   changePending: boolean;
   dispatch: (action: { type: "setDeposit"; newValue: Decimalish } | { type: "revert" }) => void;
+  justSP?: boolean;
 };
 
 const selectPrice = ({ price }: LiquityStoreState) => price;
@@ -45,7 +47,8 @@ export const StabilityDepositEditor: React.FC<StabilityDepositEditorProps> = ({
   editedUSD,
   changePending,
   dispatch,
-  children
+  children,
+  justSP
 }) => {
   const { lusdBalance, lusdInStabilityPool, stabilityDeposit } = useLiquitySelector(select);
   const editingState = useState<string>();
@@ -128,8 +131,9 @@ export const StabilityDepositEditor: React.FC<StabilityDepositEditorProps> = ({
 
   const showOverlay = changePending || waitingForTransaction
   const showResetButton = edited && !showOverlay
+  const style = justSP ? justSpStyle : {}
   return (
-    <Card>
+    <Card sx={style}>
       <Heading>
         Stability Pool
         {showResetButton && (
