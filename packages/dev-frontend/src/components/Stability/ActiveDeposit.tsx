@@ -15,6 +15,7 @@ import { useStabilityView } from "./context/StabilityViewContext";
 import { RemainingLQTY } from "./RemainingLQTY";
 import { Yield } from "./Yield";
 import { InfoIcon } from "../InfoIcon";
+import { justSpStyle, StabilityProps } from "./Stability"
 
 const selector = ({ stabilityDeposit, trove, lusdInStabilityPool }: LiquityStoreState) => ({
   stabilityDeposit,
@@ -22,7 +23,7 @@ const selector = ({ stabilityDeposit, trove, lusdInStabilityPool }: LiquityStore
   lusdInStabilityPool
 });
 
-export const ActiveDeposit: React.FC = () => {
+export const ActiveDeposit: React.FC<StabilityProps> = ({justSP}) => {
   const { dispatchEvent } = useStabilityView();
   const { stabilityDeposit, trove, lusdInStabilityPool } = useLiquitySelector(selector);
 
@@ -50,8 +51,9 @@ export const ActiveDeposit: React.FC = () => {
 
   const ethDiffInUsd = stabilityDeposit.currentUSD.sub(stabilityDeposit.currentLUSD)
   const ethIsImportant = (ethDiffInUsd.div(stabilityDeposit.currentUSD)).gt(1/1000)
+  const style = justSP ? justSpStyle : {}
   return (
-    <Card>
+    <Card sx={style}>
       <Heading>
         Stability Pool
         {!isWaitingForTransaction && (
