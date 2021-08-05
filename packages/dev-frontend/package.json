@@ -2,7 +2,7 @@
   "name": "@liquity/dev-frontend",
   "version": "0.1.0",
   "private": true,
-  "homepage": ".",
+  "homepage": "./liquity-app",
   "dependencies": {
     "@ethersproject/abi": "5.4.0",
     "@fortawesome/fontawesome-svg-core": "1.2.34",
