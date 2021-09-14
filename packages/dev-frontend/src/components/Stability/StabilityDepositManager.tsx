@@ -16,6 +16,7 @@ import {
   selectForStabilityDepositChangeValidation,
   validateStabilityDepositChange
 } from "./validation/validateStabilityDepositChange";
+import { StabilityProps } from "./Stability"
 
 const init = ({ stabilityDeposit }: LiquityStoreState) => ({
   originalDeposit: stabilityDeposit,
@@ -94,7 +95,7 @@ const reduce = (
 
 const transactionId = "stability-deposit";
 
-export const StabilityDepositManager: React.FC = () => {
+export const StabilityDepositManager: React.FC<StabilityProps> = ({justSP}) => {
   const [{ originalDeposit, editedUSD, changePending }, dispatch] = useLiquityReducer(reduce, init);
   const validationContext = useLiquitySelector(selectForStabilityDepositChangeValidation);
   const { dispatchEvent } = useStabilityView();
@@ -133,6 +134,7 @@ export const StabilityDepositManager: React.FC = () => {
       editedUSD={editedUSD}
       changePending={changePending}
       dispatch={dispatch}
+      justSP={justSP}
     >
 
 

@@ -38,7 +38,7 @@ const Item: React.FC<ItemProps> = ({icon, title, text, link}) => {
           height: "73px",
         },
         }}>
-        <img width="100%" height="100%" src={icon}/>
+        <img width="100%" height="100%" src={process.env.PUBLIC_URL + icon}/>
       </Box>
       <Box sx={{ 
         padding: "20px", paddingLeft: "0",
@@ -218,7 +218,7 @@ export const ConnectPage: React.FC<ConnectPageProps> = ({children}) => {
           },
         }}>
         <Item
-          icon={"./bprotocol/icon-a-1.svg"}
+          icon={"/bprotocol/icon-a-1.svg"}
           title={<span>Stabilize <br/>Liquity Protocol</span>}
           text="B.Protocol v2 and its novel Backstop AMM (B.AMM) automates the rebalancing of Liquity Stability Pool to maintain its strength.
           Read more on how the Liquity
@@ -226,7 +226,7 @@ export const ConnectPage: React.FC<ConnectPageProps> = ({children}) => {
           link="https://docs.liquity.org/faq/stability-pool-and-liquidations"
         />
         <Item
-          icon={"./bprotocol/icon-a-2.svg"}
+          icon={"/bprotocol/icon-a-2.svg"}
           title={<span>Get Passive<br/>
           Yield on Your LUSD</span>}
           text="By using B.Protocol to deposit your LUSD into Liquity Stability Pool, you can save the manual operation of selling your accumulated ETH back to LUSD every time a liquidation is taking place.
@@ -234,7 +234,7 @@ export const ConnectPage: React.FC<ConnectPageProps> = ({children}) => {
           link="https://medium.com/b-protocol/b-protocol-liquity-integration-is-live-1342605e7cfb"
         />
         <Item
-          icon={"./bprotocol/icon-a-3.svg"}
+          icon={"/bprotocol/icon-a-3.svg"}
           title={<span>Using<br/>
           B.Protocl V2</span>}
           text="The integration of Liqity with B.Protocol v2 is a step forward towards a more stabilized DeFi ecosystem. 

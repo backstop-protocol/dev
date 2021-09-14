@@ -15,13 +15,24 @@ const select = ({ frontend }: LiquityStoreState) => ({
   frontend
 });
 
+const shouldHideNav = () => {
+  const searchString = window.location.href.split("?")[1]
+  const urlParams = new URLSearchParams(searchString);
+  const hideNav = urlParams.get('hideNav');
+  console.log("=============================")
+  console.log({hideNav})
+  return !!hideNav
+}
+
 export const Header: React.FC = ({ children }) => {
   const {
     config: { frontendTag }
   } = useLiquity();
   const { frontend } = useLiquitySelector(select);
   const isFrontendRegistered = frontendTag === AddressZero || frontend.status === "registered";
-
+  if(shouldHideNav()){
+    return null
+  }
   return (
     <Container variant="header">
       <Flex sx={{ alignItems: "center", flex: 1 }}>

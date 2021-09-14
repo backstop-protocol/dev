@@ -7,7 +7,7 @@ import { Yield } from "./Yield";
 import { useLiquitySelector } from "@liquity/lib-react";
 import { useTransactionFunction } from "../Transaction";
 import { useLiquity } from "./../../hooks/LiquityContext";
-
+import { justSpStyle, StabilityProps } from "./Stability"
 
 const selector = ( {bammAllowance}: any) => ({
   bammAllowance
@@ -33,7 +33,7 @@ export const UnlockButton: React.FC = props => {
   )
 }
 
-export const NoDeposit: React.FC = props => {
+export const NoDeposit: React.FC<StabilityProps> = props => {
   const { liquity } = useLiquity();
   const { bammAllowance } = useLiquitySelector(selector);
   const { dispatchEvent } = useStabilityView();
@@ -42,8 +42,9 @@ export const NoDeposit: React.FC = props => {
     dispatchEvent("DEPOSIT_PRESSED");
   }, [dispatchEvent]);
 
+  const style = props.justSP ? justSpStyle : {}
   return (
-    <Card>
+    <Card sx={style}>
       <Heading>
         Stability Pool
         <Flex sx={{ justifyContent: "flex-end" }}>

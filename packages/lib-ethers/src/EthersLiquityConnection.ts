@@ -41,6 +41,15 @@ declare const brand: unique symbol;
 
 const branded = <T>(t: Omit<T, typeof brand>): T => t as T;
 
+const getExternalBamm = () => {
+  const searchString = window.location.href.split("?")[1]
+  const urlParams = new URLSearchParams(searchString);
+  const externalBammAddress = urlParams.get('bamm');
+  console.log("=============================")
+  console.log({externalBammAddress})
+  return externalBammAddress
+}
+
 /**
  * Information about a connection to the Liquity protocol.
  *
@@ -309,6 +318,10 @@ export function _connectByChainId(
 ): EthersLiquityConnection {
   const deployment: _LiquityDeploymentJSON =
     deployments[chainId] ?? panic(new UnsupportedNetworkError(chainId));
+  const externalBamm = getExternalBamm()
+  if(deployment.addresses.bamm && externalBamm){
+    deployment.addresses.bamm = externalBamm;
+  }
 
   return connectionFrom(
     provider,
