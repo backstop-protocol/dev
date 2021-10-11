@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { Card, Heading, Box, Flex, Button, Container, Close, Text } from "theme-ui";
+import { Card, Heading, Box, Flex, Button, Container, Close, Text, Paragraph } from "theme-ui";
 import { InfoMessage } from "../InfoMessage";
 import { useStabilityView } from "./context/StabilityViewContext";
 import { RemainingLQTY } from "./RemainingLQTY";
@@ -7,10 +7,12 @@ import { Yield } from "./Yield";
 import { useLiquitySelector } from "@liquity/lib-react";
 import { useTransactionFunction } from "../Transaction";
 import { useLiquity } from "./../../hooks/LiquityContext";
+import { justSpStyle, StabilityProps } from "./Stability";
+import { InfoIcon } from "../InfoIcon";
 
-
-const selector = ( {bammAllowance}: any) => ({
-  bammAllowance
+const selector = ( {bammAllowance, lusdBalance}: any) => ({
+  bammAllowance,
+  lusdBalance
 });
 
 export const UnlockButton: React.FC = props => {
@@ -33,17 +35,18 @@ export const UnlockButton: React.FC = props => {
   )
 }
 
-export const NoDeposit: React.FC = props => {
+export const NoDeposit: React.FC<StabilityProps> = props => {
   const { liquity } = useLiquity();
-  const { bammAllowance } = useLiquitySelector(selector);
+  const { bammAllowance, lusdBalance } = useLiquitySelector(selector);
   const { dispatchEvent } = useStabilityView();
 
   const handleOpenTrove = useCallback(() => {
     dispatchEvent("DEPOSIT_PRESSED");
   }, [dispatchEvent]);
 
+  const style = props.justSP ? justSpStyle : {}
   return (
-    <Card>
+    <Card sx={style}>
       <Heading>
         Stability Pool
         <Flex sx={{ justifyContent: "flex-end" }}>
@@ -53,6 +56,19 @@ export const NoDeposit: React.FC = props => {
       <Box sx={{ p: [2, 3] }}>
         <InfoMessage title="You have no LUSD in the Stability Pool.">
           You can earn LUSD and LQTY rewards by depositing LUSD.
+          <br/>
+          {lusdBalance == '0' && <span>
+            You can mint LUSD <a href="https://liquity.app/#/" target="_top">here</a>
+            <InfoIcon
+              tooltip={
+                <Card variant="tooltip" sx={{ width: ["220px", "518px"] }}>
+                  <Paragraph>
+                    Deposit your LUSD only via B.Protocol for automated rebalancing.
+                  </Paragraph>
+                </Card>
+              }
+            ></InfoIcon>
+            </span>}
         </InfoMessage>
 
         <Flex variant="layout.actions">

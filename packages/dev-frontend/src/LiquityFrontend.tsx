@@ -16,11 +16,24 @@ import { PageSwitcher } from "./pages/PageSwitcher";
 import { Farm } from "./pages/Farm";
 import { RiskyTrovesPage } from "./pages/RiskyTrovesPage";
 import { RedemptionPage } from "./pages/RedemptionPage";
+import { JustSP } from "./pages/JustSP";
 
 import { TroveViewProvider } from "./components/Trove/context/TroveViewProvider";
 import { StabilityViewProvider } from "./components/Stability/context/StabilityViewProvider";
 import { StakingViewProvider } from "./components/Staking/context/StakingViewProvider";
 import { FarmViewProvider } from "./components/Farm/context/FarmViewProvider";
+import { ConnectPage } from "./components/ConnectPage"
+
+const fullPageStyle = {
+  position: "fixed",
+  margin: 0,
+  display: "block",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  zIndex: 1
+} as React.CSSProperties;
 
 type LiquityFrontendProps = {
   loader?: React.ReactNode;
@@ -67,6 +80,14 @@ export const LiquityFrontend: React.FC<LiquityFrontendProps> = ({ loader }) => {
                       </Route>
                       <Route path="/farm">
                         <Farm />
+                      </Route>
+                      <Route path="/widget">
+                        <JustSP />
+                      </Route>
+                      <Route path="/explainer">
+                        <div style={fullPageStyle}>
+                          <ConnectPage />
+                        </div>
                       </Route>
                       <Route path="/risky-troves">
                         <RiskyTrovesPage />
