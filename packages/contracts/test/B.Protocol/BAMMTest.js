@@ -7,7 +7,7 @@ const mv = testHelpers.MoneyValues
 const timeValues = testHelpers.TimeValues
 
 const TroveManagerTester = artifacts.require("TroveManagerTester")
-const LUSDToken = artifacts.require("LUSDToken")
+const MockToken = artifacts.require("MockToken")
 const NonPayable = artifacts.require('NonPayable.sol')
 const BAMM = artifacts.require("BAMM.sol")
 const BLens = artifacts.require("BLens.sol")
@@ -39,24 +39,17 @@ contract('BAMM', async accounts => {
   let contracts
   let priceFeed
   let lusdToken
-  let sortedTroves
-  let troveManager
-  let activePool
-  let stabilityPool
   let bamm
   let lens
   let chainlink
-  let defaultPool
-  let borrowerOperations
-  let lqtyToken
-  let communityIssuance
 
   let gasPriceInWei
 
+  let cETH
+  let cLUSD
+
   const feePool = "0x1000000000000000000000000000000000000001"
 
-  const getOpenTroveLUSDAmount = async (totalDebt) => th.getOpenTroveLUSDAmount(contracts, totalDebt)
-  const openTrove = async (params) => th.openTrove(contracts, params)
   //const assertRevert = th.assertRevert
 
   describe("BAMM", async () => {
@@ -67,57 +60,40 @@ contract('BAMM', async accounts => {
 
     beforeEach(async () => {
       contracts = await deploymentHelper.deployLiquityCore()
-      contracts.troveManager = await TroveManagerTester.new()
-      contracts.lusdToken = await LUSDToken.new(
-        contracts.troveManager.address,
-        contracts.stabilityPool.address,
-        contracts.borrowerOperations.address
-      )
-      const LQTYContracts = await deploymentHelper.deployLQTYContracts(bountyAddress, lpRewardsAddress, multisig)
 
       priceFeed = contracts.priceFeedTestnet
-      lusdToken = contracts.lusdToken
-      sortedTroves = contracts.sortedTroves
-      troveManager = contracts.troveManager
-      activePool = contracts.activePool
-      stabilityPool = contracts.stabilityPool
-      defaultPool = contracts.defaultPool
-      borrowerOperations = contracts.borrowerOperations
-      hintHelpers = contracts.hintHelpers
-
-      lqtyToken = LQTYContracts.lqtyToken
-      communityIssuance = LQTYContracts.communityIssuance
-
-      await deploymentHelper.connectLQTYContracts(LQTYContracts)
-      await deploymentHelper.connectCoreContracts(contracts, LQTYContracts)
-      await deploymentHelper.connectLQTYContractsToCore(LQTYContracts, contracts)
-
       // Register 3 front ends
       //await th.registerFrontEnds(frontEnds, stabilityPool)
 
       // deploy BAMM
       chainlink = await ChainlinkTestnet.new(priceFeed.address)
+      lusdToken = await MockToken.new(7)
+      cETH = await MockToken.new(8)
+      cLUSD = await MockToken.new(8)      
 
-      const kickbackRate_F1 = toBN(dec(5, 17)) // F1 kicks 50% back to depositor
-      await stabilityPool.registerFrontEnd(kickbackRate_F1, { from: frontEnd_1 })
 
-      bamm = await BAMM.new(chainlink.address, stabilityPool.address, lusdToken.address, lqtyToken.address, 400, feePool, frontEnd_1, {from: bammOwner})
-      lens = await BLens.new()
+      bamm = await BAMM.new(chainlink.address,
+                            lusdToken.address,
+                            cETH.address,
+                            cLUSD.address,
+                            400,
+                            feePool,
+                            {from: bammOwner})
     })
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it("deposit(): increases the Stability Pool LUSD balance", async () => {
+    it.only("deposit(): increases the Stability Pool LUSD balance", async () => {
       // --- SETUP --- Give Alice a least 200
-      await openTrove({ extraLUSDAmount: toBN(200), ICR: toBN(dec(2, 18)), extraParams: { from: alice } })
+      await lusdToken.mintToken(alice, toBN(200), {from: alice})
 
       // --- TEST ---
       await lusdToken.approve(bamm.address, toBN(200), { from: alice })
       await bamm.deposit(toBN(200), { from: alice })
 
       // check LUSD balances after
-      const stabilityPool_LUSD_After = await stabilityPool.getTotalLUSDDeposits()
-      assert.equal(stabilityPool_LUSD_After, 200)
+      const bamm_LUSD_After = await lusdToken.balanceOf(bamm.address)
+      assert.equal(bamm_LUSD_After, 200)
     })
 
     // --- provideToSP() ---
