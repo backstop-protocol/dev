@@ -40,25 +40,7 @@ contract BLens {
         z = mul(x, RAY) / y;
     }
 
-    function getUnclaimedLqty(address user, BAMM bamm, ERC20 token) public returns(uint) {
-        // trigger bamm (p)lqty claim
-        bamm.withdraw(0);
-
-        if(bamm.total() == 0) return 0;
-
-        // duplicate harvest logic
-        uint crop = sub(token.balanceOf(address(bamm)), bamm.stock());
-        uint share = add(bamm.share(), rdiv(crop, bamm.total()));
-
-        uint last = bamm.crops(user);
-        uint curr = rmul(bamm.stake(user), share);
-        if(curr > last) return curr - last;
-        return 0;
-    }
-
     struct UserInfo {
-        uint unclaimedLqty;
-
         uint bammUserBalance;
         uint bammTotalSupply;
 
@@ -69,14 +51,12 @@ contract BLens {
         uint ethTotal;
     }
 
-    function getUserInfo(address user, BAMM bamm, ERC20 lqty) external returns(UserInfo memory info) {
-        info.unclaimedLqty = getUnclaimedLqty(user, bamm, lqty);
+    function getUserInfo(address user, BAMM bamm) external view returns(UserInfo memory info) {
         info.bammUserBalance = bamm.balanceOf(user);
         info.bammTotalSupply = bamm.totalSupply();
         
-        StabilityPool sp = bamm.SP();
-        info.lusdTotal = sp.getCompoundedLUSDDeposit(address(bamm));
-        info.ethTotal = sp.getDepositorETHGain(address(bamm)) + address(bamm).balance;
+        info.lusdTotal = bamm.LUSD().balanceOf(address(bamm));
+        info.ethTotal = address(bamm).balance;
 
         info.lusdUserBalance = info.lusdTotal * info.bammUserBalance / info.bammTotalSupply;
         info.ethUserBalance = info.ethTotal * info.bammUserBalance / info.bammTotalSupply;        

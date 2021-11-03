@@ -2,8 +2,7 @@
 
 pragma solidity 0.6.11;
 
-import "./../StabilityPool.sol";
-import "./CropJoinAdapter.sol";
+import "./TokenAdapter.sol";
 import "./PriceFormula.sol";
 import "./../Interfaces/IPriceFeed.sol";
 import "./../Dependencies/IERC20.sol";
@@ -12,60 +11,73 @@ import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
 
 
-contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
+interface ICToken {
+    function redeem(uint redeemTokens) external returns (uint);
+    function balanceOf(address a) external view returns (uint);
+    function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint);
+}
+
+contract BAMM is TokenAdapter, PriceFormula, Ownable {
     using SafeMath for uint256;
 
     AggregatorV3Interface public immutable priceAggregator;
     IERC20 public immutable LUSD;
-    StabilityPool immutable public SP;
+    uint public immutable lusdDecimals;
+    ICToken public immutable cETH;
+    ICToken public immutable cBorrow;
 
     address payable public immutable feePool;
     uint public constant MAX_FEE = 100; // 1%
+    uint public constant MAX_CALLER_FEE = 100; // 1%
     uint public fee = 0; // fee in bps
+    uint public callerFee = 0; // fee in bps
     uint public A = 20;
     uint public constant MIN_A = 20;
     uint public constant MAX_A = 200;    
 
     uint public immutable maxDiscount; // max discount in bips
 
-    address public immutable frontEndTag;
-
     uint constant public PRECISION = 1e18;
 
-    event ParamsSet(uint A, uint fee);
+    event ParamsSet(uint A, uint fee, uint callerFee);
     event UserDeposit(address indexed user, uint lusdAmount, uint numShares);
     event UserWithdraw(address indexed user, uint lusdAmount, uint ethAmount, uint numShares);
     event RebalanceSwap(address indexed user, uint lusdAmount, uint ethAmount, uint timestamp);
 
     constructor(
         address _priceAggregator,
-        address payable _SP,
         address _LUSD,
-        address _LQTY,
+        address _cETH,
+        address _cBorrow,
         uint _maxDiscount,
-        address payable _feePool,
-        address _fronEndTag)
+        address payable _feePool)
         public
-        CropJoinAdapter(_LQTY)
     {
         priceAggregator = AggregatorV3Interface(_priceAggregator);
         LUSD = IERC20(_LUSD);
-        SP = StabilityPool(_SP);
+        lusdDecimals = IERC20(_LUSD).decimals();
+        cETH = ICToken(_cETH);
+        cBorrow = ICToken(_cBorrow);
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
-        frontEndTag = _fronEndTag;
+
+        IERC20(_LUSD).approve(_cBorrow, uint(-1));
+
+        require(IERC20(_LUSD).decimals() <= 18, "unsupported decimals");
     }
 
-    function setParams(uint _A, uint _fee) external onlyOwner {
+    function setParams(uint _A, uint _fee, uint _callerFee) external onlyOwner {
         require(_fee <= MAX_FEE, "setParams: fee is too big");
+        require(_callerFee <= MAX_CALLER_FEE, "setParams: caller fee is too big");        
         require(_A >= MIN_A, "setParams: A too small");
         require(_A <= MAX_A, "setParams: A too big");
 
         fee = _fee;
+        callerFee = _callerFee;
         A = _A;
 
-        emit ParamsSet(_A, _fee);
+        emit ParamsSet(_A, _fee, _callerFee);
     }
 
     function fetchPrice() public view returns(uint) {
@@ -102,14 +114,14 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
 
         if(chainlinkTimestamp + 1 hours < now) return 0; // price is down
 
-        uint chainlinkFactor = 10 ** chainlinkDecimals;
+        uint chainlinkFactor = (10 ** (18 + chainlinkDecimals - lusdDecimals));
         return chainlinkLatestAnswer.mul(PRECISION) / chainlinkFactor;
     }
 
     function deposit(uint lusdAmount) external {        
         // update share
-        uint lusdValue = SP.getCompoundedLUSDDeposit(address(this));
-        uint ethValue = SP.getDepositorETHGain(address(this)).add(address(this).balance);
+        uint lusdValue = LUSD.balanceOf(address(this));
+        uint ethValue = address(this).balance;
 
         uint price = fetchPrice();
         require(ethValue == 0 || price > 0, "deposit: chainlink is down");
@@ -117,15 +129,14 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         uint totalValue = lusdValue.add(ethValue.mul(price) / PRECISION);
 
         // this is in theory not reachable. if it is, better halt deposits
-        // the condition is equivalent to: (totalValue = 0) ==> (total = 0)
-        require(totalValue > 0 || total == 0, "deposit: system is rekt");
+        // the condition is equivalent to: (totalValue = 0) ==> (totalSupply = 0)
+        require(totalValue > 0 || totalSupply == 0, "deposit: system is rekt");
 
         uint newShare = PRECISION;
-        if(total > 0) newShare = total.mul(lusdAmount) / totalValue;
+        if(totalSupply > 0) newShare = totalSupply.mul(lusdAmount) / totalValue;
 
         // deposit
         require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "deposit: transferFrom failed");
-        SP.provideToSP(lusdAmount, frontEndTag);
 
         // update LP token
         mint(msg.sender, newShare);
@@ -134,14 +145,11 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
     }
 
     function withdraw(uint numShares) external {
-        uint lusdValue = SP.getCompoundedLUSDDeposit(address(this));
-        uint ethValue = SP.getDepositorETHGain(address(this)).add(address(this).balance);
+        uint lusdValue = LUSD.balanceOf(address(this));
+        uint ethValue = address(this).balance;
 
-        uint lusdAmount = lusdValue.mul(numShares).div(total);
-        uint ethAmount = ethValue.mul(numShares).div(total);
-
-        // this withdraws lusd, lqty, and eth
-        SP.withdrawFromSP(lusdAmount);
+        uint lusdAmount = lusdValue.mul(numShares).div(totalSupply);
+        uint ethAmount = ethValue.mul(numShares).div(totalSupply);
 
         // update LP token
         burn(msg.sender, numShares);
@@ -163,12 +171,12 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         return n.mul(uint(10000 + bps)) / 10000;
     }
 
-    function getSwapEthAmount(uint lusdQty) public view returns(uint ethAmount, uint feeEthAmount) {
-        uint lusdBalance = SP.getCompoundedLUSDDeposit(address(this));
-        uint ethBalance  = SP.getDepositorETHGain(address(this)).add(address(this).balance);
+    function getSwapEthAmount(uint lusdQty) public view returns(uint ethAmount) {
+        uint lusdBalance = LUSD.balanceOf(address(this));
+        uint ethBalance  = address(this).balance;
 
         uint eth2usdPrice = fetchPrice();
-        if(eth2usdPrice == 0) return (0, 0); // chainlink is down
+        if(eth2usdPrice == 0) return 0; // chainlink is down
 
         uint ethUsdValue = ethBalance.mul(eth2usdPrice) / PRECISION;
         uint maxReturn = addBps(lusdQty.mul(PRECISION) / eth2usdPrice, int(maxDiscount));
@@ -183,20 +191,20 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         if(ethBalance < basicEthReturn) basicEthReturn = ethBalance; // cannot give more than balance 
         if(maxReturn < basicEthReturn) basicEthReturn = maxReturn;
 
-        ethAmount = addBps(basicEthReturn, -int(fee));
-        feeEthAmount = basicEthReturn.sub(ethAmount);
+        ethAmount = basicEthReturn;
     }
 
     // get ETH in return to LUSD
     function swap(uint lusdAmount, uint minEthReturn, address payable dest) public returns(uint) {
-        (uint ethAmount, uint feeAmount) = getSwapEthAmount(lusdAmount);
+        uint ethAmount = getSwapEthAmount(lusdAmount);
 
         require(ethAmount >= minEthReturn, "swap: low return");
 
-        LUSD.transferFrom(msg.sender, address(this), lusdAmount);
-        SP.provideToSP(lusdAmount, frontEndTag);
+        require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "swap: transferFrom failed");
 
-        if(feeAmount > 0) feePool.transfer(feeAmount);
+        uint feeAmount = addBps(lusdAmount, int(fee)).sub(lusdAmount);
+        if(feeAmount > 0) require(LUSD.transfer(feePool, feeAmount), "swap: transfer failed");
+
         (bool success, ) = dest.call{ value: ethAmount }(""); // re-entry is fine here
         require(success, "swap: sending ETH failed");
 
@@ -205,27 +213,38 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         return ethAmount;
     }
 
-    // kyber network reserve compatible function
-    function trade(
-        IERC20 /* srcToken */,
-        uint256 srcAmount,
-        IERC20 /* destToken */,
-        address payable destAddress,
-        uint256 /* conversionRate */,
-        bool /* validate */
-    ) external payable returns (bool) {
-        return swap(srcAmount, 0, destAddress) > 0;
-    }
-
-    function getConversionRate(
-        IERC20 /* src */,
-        IERC20 /* dest */,
-        uint256 srcQty,
-        uint256 /* blockNumber */
-    ) external view returns (uint256) {
-        (uint ethQty, ) = getSwapEthAmount(srcQty);
-        return ethQty.mul(PRECISION) / srcQty;
-    }
-
     receive() external payable {}
+
+    function canLiquidate(
+        address cTokenBorrowed,
+        address cTokenCollateral,
+        uint repayAmount
+    )
+        external
+        view
+        returns(bool)
+    {
+        if(cTokenBorrowed != address(cBorrow)) return false;
+        if(cTokenCollateral != address(cETH)) return false;
+
+        return repayAmount <= LUSD.balanceOf(address(this));
+    }
+
+    // callable by anyone
+    function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint) {
+        require(collateral == address(cETH), "liquidateBorrow: only cETH collateral is allowed");
+
+        uint ethBalBefore = address(this).balance;
+        require(cBorrow.liquidateBorrow(borrower, amount, collateral) == 0, "liquidateBorrow: liquidation failed");
+        require(cETH.redeem(cETH.balanceOf(address(this))) == 0, "liquidateBorrow: cETH redeem failed");
+        uint ethBalAfter = address(this).balance;
+
+        uint deltaEth = ethBalAfter.sub(ethBalBefore);
+        uint feeAmount = addBps(deltaEth, int(callerFee)).sub(deltaEth);
+        if(feeAmount > 0 ) msg.sender.transfer(feeAmount);
+    }    
 }
+
+
+// TODO
+// 5) check return value of erc20
