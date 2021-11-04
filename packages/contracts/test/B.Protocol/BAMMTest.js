@@ -83,7 +83,7 @@ contract('BAMM', async accounts => {
                             {from: bammOwner})
     })
 
-    it.only("liquidateBorrow", async () => {
+    it("liquidateBorrow", async () => {
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
