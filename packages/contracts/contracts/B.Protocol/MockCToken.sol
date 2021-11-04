@@ -31,7 +31,6 @@ contract MockCToken {
     }
 
     function depositEther() public payable {
-        
         balanceOf[msg.sender] += msg.value; 
     }
 
@@ -50,6 +49,4 @@ contract MockCToken {
         token.transferFrom(msg.sender, address(this), amount);
         collateral.transfer(borrower, msg.sender, amount*tokenToCETHPrice/1e18);
     }
-
-    
 }
