@@ -83,7 +83,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): increases the Stability Pool LUSD balance", async () => {
+    it("deposit(): increases the Stability Pool LUSD balance", async () => {
       // --- SETUP --- Give Alice a least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
 
@@ -98,7 +98,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): two users deposit, check their share", async () => {
+    it("deposit(): two users deposit, check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
       await lusdToken.mintToken(whale, toBN(200), {from: alice})      
@@ -118,7 +118,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): two users deposit, one withdraw. check their share", async () => {
+    it("deposit(): two users deposit, one withdraw. check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
       await lusdToken.mintToken(whale, toBN(200), {from: alice})           
@@ -146,7 +146,7 @@ contract('BAMM', async accounts => {
       assert.equal(whaleBalanceAfter.sub(whaleBalanceBefore).toString(), 50)      
     })
 
-    it.only('test share with ether', async () => {
+    it('test share with ether', async () => {
       // --- SETUP ---
 
       await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})
@@ -189,7 +189,7 @@ contract('BAMM', async accounts => {
       assert(realDeltaEth.add(toBN(dec(1,16))).gt(expectedDelaEth), "eth should be higher")
     })
 
-    it.only('price exceed max dicount and/or eth balance', async () => {
+    it('price exceed max dicount and/or eth balance', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
       await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
       await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
@@ -225,7 +225,7 @@ contract('BAMM', async accounts => {
       assert.equal(priceDepletedWithFee.toString(), ethGains.toString())
     })
 
-    it.only('test getSwapEthAmount', async () => {
+    it('test getSwapEthAmount', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
       await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
       await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
@@ -254,7 +254,7 @@ contract('BAMM', async accounts => {
       assert.equal(priceWithFee.toString(), expectedReturn.mul(toBN(dec(1,11))).mul(toBN(100)).div(toBN(100 * 105)).toString())      
     })    
 
-    it.only('test fetch price', async () => {
+    it('test fetch price', async () => {
       await priceFeed.setPrice(dec(666, 18));
       assert.equal(await bamm.fetchPrice(), dec(666, 7))
 
@@ -262,7 +262,7 @@ contract('BAMM', async accounts => {
       assert.equal((await bamm.fetchPrice()).toString(), "0")      
     })
 
-    it.only('test swap', async () => {
+    it('test swap', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
       await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
 
@@ -307,54 +307,53 @@ contract('BAMM', async accounts => {
     it('test set params happy path', async () => {
       // --- SETUP ---
 
-      // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: whale, value: dec(50, 'ether') } })
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: A } })
-      await openTrove({ extraLUSDAmount: toBN(dec(20000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: B } })
-      
-      const whaleLUSD = await lusdToken.balanceOf(whale)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: whale })
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 18)), { from: A })
-      await bamm.deposit(toBN(dec(10000, 18)), { from: A } )
+      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
+      await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
 
-      // 2 Troves opened, each withdraws minimum debt
-      await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
-      await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_2, } })
+      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
+      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: whale })
+
+      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
+
+      // price drops: defaulter's Troves fall below MCR, whale doesn't
+      await priceFeed.setPrice(dec(105, 18));
+
+      // 4k liquidations
+      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
+
+      // send ETH to bamm, mimics liquidations
+      const ethGains = web3.utils.toBN("39799999999999999975") 
+      await web3.eth.sendTransaction({from: whale, to: bamm.address, value: ethGains})
 
 
       // price drops: defaulter's Troves fall below MCR, whale doesn't
       await priceFeed.setPrice(dec(105, 18));
 
-      // Troves are closed
-      await troveManager.liquidate(defaulter_1, { from: owner })
-      await troveManager.liquidate(defaulter_2, { from: owner })
-
-      // 4k liquidations
-      assert.equal(toBN(dec(6000, 18)).toString(), (await stabilityPool.getCompoundedLUSDDeposit(bamm.address)).toString())
-      const ethGains = web3.utils.toBN("39799999999999999975")
-
-      const lusdQty = dec(105, 18)
-      const expectedReturn200 = await bamm.getReturn(lusdQty, dec(6000, 18), toBN(dec(6000, 18)).add(ethGains.mul(toBN(2 * 105))), 200)
-      const expectedReturn190 = await bamm.getReturn(lusdQty, dec(6000, 18), toBN(dec(6000, 18)).add(ethGains.mul(toBN(2 * 105))), 190)      
+      const lusdQty = dec(105, 7)
+      const expectedReturn200 = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(ethGains.mul(toBN(2 * 105)).div(toBN(dec(1,11)))), 200)
+      const expectedReturn190 = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(ethGains.mul(toBN(2 * 105)).div(toBN(dec(1,11)))), 190)
 
       assert(expectedReturn200.toString() !== expectedReturn190.toString())
 
       // without fee
-      await bamm.setParams(200, 0, {from: bammOwner})
+      await bamm.setParams(200, 0, 0, {from: bammOwner})
       const priceWithoutFee = await bamm.getSwapEthAmount(lusdQty)
-      assert.equal(priceWithoutFee.ethAmount.toString(), expectedReturn200.mul(toBN(100)).div(toBN(100 * 105)).toString())
+      assert.equal(priceWithoutFee.div(toBN(dec(1,11))).toString(), expectedReturn200.mul(toBN(100)).div(toBN(100 * 105)).toString())
 
       // with fee
-      await bamm.setParams(190, 100, {from: bammOwner})
+      await bamm.setParams(190, 100, 0, {from: bammOwner})
       const priceWithFee = await bamm.getSwapEthAmount(lusdQty)
-      assert.equal(priceWithFee.ethAmount.toString(), expectedReturn190.mul(toBN(99)).div(toBN(100 * 105)).toString())      
+      assert.equal(priceWithFee.div(toBN(dec(1,11))).toString(), expectedReturn190.mul(toBN(100)).div(toBN(100 * 105)).toString())
+
+      // TODO - with caller fee
     })    
     
     it('test set params sad path', async () => {
-      await assertRevert(bamm.setParams(210, 100, {from: bammOwner}), 'setParams: A too big')
-      await assertRevert(bamm.setParams(10, 100, {from: bammOwner}), 'setParams: A too small')
-      await assertRevert(bamm.setParams(10, 101, {from: bammOwner}), 'setParams: fee is too big')             
-      await assertRevert(bamm.setParams(20, 100, {from: B}), 'Ownable: caller is not the owner')      
+      await assertRevert(bamm.setParams(210, 100, 50, {from: bammOwner}), 'setParams: A too big')
+      await assertRevert(bamm.setParams(10, 100, 50, {from: bammOwner}), 'setParams: A too small')
+      await assertRevert(bamm.setParams(10, 101, 50, {from: bammOwner}), 'setParams: fee is too big')
+      await assertRevert(bamm.setParams(10, 100, 150, {from: bammOwner}), 'setParams: caller fee is too big')      
+      await assertRevert(bamm.setParams(20, 100, 50, {from: B}), 'Ownable: caller is not the owner')      
     })
 
     it.skip('transfer happy test', async () => { // transfer is not supported anymore
