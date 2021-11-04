@@ -8,6 +8,7 @@ const timeValues = testHelpers.TimeValues
 
 const TroveManagerTester = artifacts.require("TroveManagerTester")
 const MockToken = artifacts.require("MockToken")
+const MockCToken = artifacts.require("MockCToken")
 const NonPayable = artifacts.require('NonPayable.sol')
 const BAMM = artifacts.require("BAMM.sol")
 const BLens = artifacts.require("BLens.sol")
@@ -30,7 +31,8 @@ contract('BAMM', async accounts => {
     u1, u2, u3, u4, u5,
     v1, v2, v3, v4, v5,
     frontEnd_1, frontEnd_2, frontEnd_3,
-    bammOwner
+    bammOwner, 
+    shmuel, yaron, eitan
   ] = accounts;
 
   const [bountyAddress, lpRewardsAddress, multisig] = accounts.slice(997, 1000)
@@ -68,8 +70,8 @@ contract('BAMM', async accounts => {
       // deploy BAMM
       chainlink = await ChainlinkTestnet.new(priceFeed.address)
       lusdToken = await MockToken.new(7)
-      cETH = await MockToken.new(8)
-      cLUSD = await MockToken.new(8)      
+      cETH = await MockCToken.new(lusdToken.address, true)
+      cLUSD = await MockCToken.new(lusdToken.address, false)   
 
 
       bamm = await BAMM.new(chainlink.address,
@@ -79,6 +81,22 @@ contract('BAMM', async accounts => {
                             400,
                             feePool,
                             {from: bammOwner})
+    })
+
+    it.only("liquidateBorrow", async () => {
+      const liquidationAmount = toBN(dec(1000, 7))
+      const collateralAmount = liquidationAmount.mul(toBN(3))
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.mintToken(yaron, collateralAmount, {from: yaron})
+      await lusdToken.approve(cLUSD.address, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(cETH.address, collateralAmount, {from: yaron})
+      await cETH.depositToken(collateralAmount, {from: yaron})
+
+      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
+      
+      await cLUSD.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
+      const shmuelsCEthBalance = await cETH.balanceOf(shmuel)
+      assert.equal(shmuelsCEthBalance.toString(), collateralAmount.toString())
     })
 
     // --- provideToSP() ---
