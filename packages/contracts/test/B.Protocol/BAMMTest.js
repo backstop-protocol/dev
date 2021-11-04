@@ -85,15 +85,18 @@ contract('BAMM', async accounts => {
 
     it.only("liquidateBorrow", async () => {
       const liquidationAmount = toBN(1000)
+      const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.mintToken(yaron, liquidationAmount, {from: yaron})
+      await lusdToken.mintToken(yaron, collateralAmount, {from: yaron})
       await lusdToken.approve(cLUSD.address, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(cETH.address, liquidationAmount, {from: yaron})
-      await cETH.depositToken(liquidationAmount, {from: yaron})
-      await cLUSD.setCETHPrice(toBN(1e18))
+      await lusdToken.approve(cETH.address, collateralAmount, {from: yaron})
+      await cETH.depositToken(collateralAmount, {from: yaron})
+
+      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
+      
       await cLUSD.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
       const shmuelsCEthBalance = await cETH.balanceOf(shmuel)
-      assert.equal(shmuelsCEthBalance.toString(), liquidationAmount.toString())
+      assert.equal(shmuelsCEthBalance.toString(), collateralAmount.toString())
     })
 
     // --- provideToSP() ---
