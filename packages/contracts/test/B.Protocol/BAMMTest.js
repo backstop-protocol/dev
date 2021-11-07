@@ -83,7 +83,7 @@ contract('BAMM', async accounts => {
                             {from: bammOwner})
     })
 
-    it.only("liquidateBorrow", async () => {
+    it.only("liquidateBorrow MockCtoken", async () => {
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
@@ -97,6 +97,25 @@ contract('BAMM', async accounts => {
       await cLUSD.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
       const shmuelsCEthBalance = await cETH.balanceOf(shmuel)
       assert.equal(shmuelsCEthBalance.toString(), collateralAmount.toString())
+    })
+
+    it.only("canLiquidate", async ()=> {
+      const liquidationAmount = toBN(dec(1000, 7))
+
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+
+      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      
+
+      await bamm.deposit(liquidationAmount, {from: shmuel})
+
+      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
+
+      const canLiquidate = await bamm.canLiquidate(cLUSD.address, cETH.address, liquidationAmount)
+      assert.equal(canLiquidate, true)
+
+      const cantLiquidate = await bamm.canLiquidate(cLUSD.address, cETH.address, liquidationAmount.add(toBN(1)))
+      assert.equal(cantLiquidate, false)
     })
 
     // --- provideToSP() ---
