@@ -40,7 +40,7 @@ contract('BAMM', async accounts => {
   const frontEnds = [frontEnd_1, frontEnd_2, frontEnd_3]
   let contracts
   let priceFeed
-  let cLUSDlusdToken
+  let lusdToken
   let bamm
   let lens
   let chainlink
@@ -87,7 +87,7 @@ contract('BAMM', async accounts => {
                             {from: bammOwner})
     })
 
-    it.only("liquidateBorrow MockCtoken", async () => {
+    it("liquidateBorrow MockCtoken", async () => {
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
@@ -100,7 +100,7 @@ contract('BAMM', async accounts => {
       assert.equal(shmuelsCEthBalance.toString(), collateralAmount.toString())
     })
 
-    it.only("fails to liquidateBorrow MockCtoken when not enough funds", async () => {
+    it("fails to liquidateBorrow MockCtoken when not enough funds", async () => {
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
@@ -113,7 +113,36 @@ contract('BAMM', async accounts => {
       , "revert SafeMath: subtraction overflow")
     })
 
-    it.only("liquidateBorrow bamm", async () => {
+    it("liquidateBorrow bamm", async () => {
+      await bamm.setParams(20, 100, 50, {from: bammOwner})
+      const liquidationAmount = toBN(dec(1000, 7))
+      const collateralAmount = toBN(dec(3000, 18))
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      await cETH.depositEther({ from: yaron, value: collateralAmount})
+      await bamm.deposit(liquidationAmount, {from: shmuel})
+      const callerEthBalanceBefore = toBN(await web3.eth.getBalance(shmuel))
+
+      const expectedCallerFee = collateralAmount.div(toBN(200)) // 0.5%
+      console.log("expectedCallerFee", expectedCallerFee.toString())
+      await cLUSD.setCETHPrice(toBN(dec(3, 18+11)))
+
+      await bamm.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
+      
+      const callerEthBalanceAfter = toBN(await web3.eth.getBalance(shmuel))
+      const bammEthBalance = await web3.eth.getBalance(bamm.address)
+      const expectdEthBalance = collateralAmount.sub(expectedCallerFee)
+      assert.equal(bammEthBalance.toString(), expectdEthBalance.toString())
+      const bammLusdBalance = await lusdToken.balanceOf(bamm.address)
+      assert.equal(bammLusdBalance.toString(), "0")
+      const callerEthDelta = callerEthBalanceAfter.sub(callerEthBalanceBefore)
+      const onePercent = expectedCallerFee.div(toBN(100))
+      // caller fee reward minus gass fee to call the liquidateBorrow
+      // should result in a plus of 99% of the expected caller fee in the caller eth balance
+      assert.equal(isWithin99Percent(onePercent, callerEthDelta), true)
+    })
+
+    it("reverts when liquidation discount is too low", ()=>{
       await bamm.setParams(20, 100, 50, {from: bammOwner})
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = toBN(dec(3000, 18))
