@@ -62,8 +62,6 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         feePool = _feePool;
         maxDiscount = _maxDiscount;
 
-        IERC20(_LUSD).approve(_cBorrow, uint(-1));
-
         require(IERC20(_LUSD).decimals() <= 18, "unsupported decimals");
     }
 
@@ -235,13 +233,19 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         require(collateral == address(cETH), "liquidateBorrow: only cETH collateral is allowed");
 
         uint ethBalBefore = address(this).balance;
+        IERC20(LUSD).approve(address(cBorrow), amount);
         require(cBorrow.liquidateBorrow(borrower, amount, collateral) == 0, "liquidateBorrow: liquidation failed");
+        IERC20(LUSD).approve(address(cBorrow), 0);
         require(cETH.redeem(cETH.balanceOf(address(this))) == 0, "liquidateBorrow: cETH redeem failed");
         uint ethBalAfter = address(this).balance;
 
         uint deltaEth = ethBalAfter.sub(ethBalBefore);
         uint feeAmount = addBps(deltaEth, int(callerFee)).sub(deltaEth);
         if(feeAmount > 0 ) msg.sender.transfer(feeAmount);
+
+        // do sanity check on the price
+        uint price = fetchPrice();
+        require(deltaEth.mul(price) / PRECISION >= addBps(amount, int(maxDiscount)), "liquidation discount is too low");
     }    
 }
 
