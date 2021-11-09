@@ -40,7 +40,7 @@ contract('BAMM', async accounts => {
   const frontEnds = [frontEnd_1, frontEnd_2, frontEnd_3]
   let contracts
   let priceFeed
-  let lusdToken
+  let cLUSDlusdToken
   let bamm
   let lens
   let chainlink
@@ -51,6 +51,10 @@ contract('BAMM', async accounts => {
   let cLUSD
 
   const feePool = "0x1000000000000000000000000000000000000001"
+
+  const isWithin99Percent = (onePercent, b)=> {
+    return (b >= onePercent.mul(toBN(99)) && b <= onePercent.mul(toBN(100)))
+  }
 
   //const assertRevert = th.assertRevert
 
@@ -70,9 +74,9 @@ contract('BAMM', async accounts => {
       // deploy BAMM
       chainlink = await ChainlinkTestnet.new(priceFeed.address)
       lusdToken = await MockToken.new(7)
-      cETH = await MockCToken.new(lusdToken.address, true)
-      cLUSD = await MockCToken.new(lusdToken.address, false)   
-
+      ethToken = await MockToken.new(7)
+      cETH = await MockCToken.new(ethToken.address, true)
+      cLUSD = await MockCToken.new(lusdToken.address, false)
 
       bamm = await BAMM.new(chainlink.address,
                             lusdToken.address,
@@ -87,19 +91,62 @@ contract('BAMM', async accounts => {
       const liquidationAmount = toBN(dec(1000, 7))
       const collateralAmount = liquidationAmount.mul(toBN(3))
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.mintToken(yaron, collateralAmount, {from: yaron})
       await lusdToken.approve(cLUSD.address, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(cETH.address, collateralAmount, {from: yaron})
-      await cETH.depositToken(collateralAmount, {from: yaron})
+      await cETH.depositEther({ from: yaron, value: collateralAmount})
 
       await cLUSD.setCETHPrice(toBN(dec(3, 18)))
-      
       await cLUSD.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
       const shmuelsCEthBalance = await cETH.balanceOf(shmuel)
       assert.equal(shmuelsCEthBalance.toString(), collateralAmount.toString())
     })
 
-    it.only("canLiquidate", async ()=> {
+    it.only("fails to liquidateBorrow MockCtoken when not enough funds", async () => {
+      const liquidationAmount = toBN(dec(1000, 7))
+      const collateralAmount = liquidationAmount.mul(toBN(3))
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(cLUSD.address, liquidationAmount, {from: shmuel})
+      await cETH.depositEther({ from: yaron, value: collateralAmount})
+
+      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
+      await assertRevert(
+        cLUSD.liquidateBorrow(yaron, liquidationAmount.add(toBN(1)), cETH.address, {from: shmuel})
+      , "revert SafeMath: subtraction overflow")
+    })
+
+    it.only("liquidateBorrow bamm", async () => {
+      await bamm.setParams(20, 100, 50, {from: bammOwner})
+      const liquidationAmount = toBN(dec(1000, 7))
+      const collateralAmount = toBN(dec(3000, 18))
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      await cETH.depositEther({ from: yaron, value: collateralAmount})
+      await bamm.deposit(liquidationAmount, {from: shmuel})
+      const callerEthBalanceBefore = toBN(await web3.eth.getBalance(shmuel))
+
+      const expectedCallerFee = collateralAmount.div(toBN(200)) // 0.5%
+      console.log("expectedCallerFee", expectedCallerFee.toString())
+      await cLUSD.setCETHPrice(toBN(dec(3, 18+11)))
+
+      await bamm.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel})
+      
+      const callerEthBalanceAfter = toBN(await web3.eth.getBalance(shmuel))
+      const bammEthBalance = await web3.eth.getBalance(bamm.address)
+      const expectdEthBalance = collateralAmount.sub(expectedCallerFee)
+      assert.equal(bammEthBalance.toString(), expectdEthBalance.toString())
+      const bammLusdBalance = await lusdToken.balanceOf(bamm.address)
+      assert.equal(bammLusdBalance.toString(), "0")
+      const callerEthDelta = callerEthBalanceAfter.sub(callerEthBalanceBefore)
+      const onePercent = expectedCallerFee.div(toBN(100))
+      // caller fee reward minus gass fee to call the liquidateBorrow
+      // should result in a plus of 99% of the expected caller fee in the caller eth balance
+      assert.equal(isWithin99Percent(onePercent, callerEthDelta), true)
+    })
+
+    // bamm liquidate borrow: eth check collateral
+    // failure tests
+    // resolve conflicts
+
+    it("canLiquidate", async ()=> {
       const liquidationAmount = toBN(dec(1000, 7))
 
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
@@ -120,7 +167,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): increases the Stability Pool LUSD balance", async () => {
+    it("deposit(): increases the Stability Pool LUSD balance", async () => {
       // --- SETUP --- Give Alice a least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
 
@@ -135,7 +182,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): two users deposit, check their share", async () => {
+    it("deposit(): two users deposit, check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
       await lusdToken.mintToken(whale, toBN(200), {from: alice})      
@@ -155,7 +202,7 @@ contract('BAMM', async accounts => {
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
-    it.only("deposit(): two users deposit, one withdraw. check their share", async () => {
+    it("deposit(): two users deposit, one withdraw. check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
       await lusdToken.mintToken(alice, toBN(200), {from: alice})
       await lusdToken.mintToken(whale, toBN(200), {from: alice})           
@@ -183,7 +230,7 @@ contract('BAMM', async accounts => {
       assert.equal(whaleBalanceAfter.sub(whaleBalanceBefore).toString(), 50)      
     })
 
-    it.only('test share with ether', async () => {
+    it('test share with ether', async () => {
       // --- SETUP ---
 
       await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})
@@ -226,7 +273,7 @@ contract('BAMM', async accounts => {
       assert(realDeltaEth.add(toBN(dec(1,16))).gt(expectedDelaEth), "eth should be higher")
     })
 
-    it.only('price exceed max dicount and/or eth balance', async () => {
+    it('price exceed max dicount and/or eth balance', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
       await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
       await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
@@ -262,7 +309,7 @@ contract('BAMM', async accounts => {
       assert.equal(priceDepletedWithFee.toString(), ethGains.toString())
     })
 
-    it.only('test getSwapEthAmount', async () => {
+    it('test getSwapEthAmount', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
       await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
       await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
@@ -291,7 +338,7 @@ contract('BAMM', async accounts => {
       assert.equal(priceWithFee.toString(), expectedReturn.mul(toBN(dec(1,11))).mul(toBN(100)).div(toBN(100 * 105)).toString())      
     })    
 
-    it.only('test fetch price', async () => {
+    it('test fetch price', async () => {
       await priceFeed.setPrice(dec(666, 18));
       assert.equal(await bamm.fetchPrice(), dec(666, 7))
 
@@ -299,7 +346,7 @@ contract('BAMM', async accounts => {
       assert.equal((await bamm.fetchPrice()).toString(), "0")      
     })
 
-    it.only('test swap', async () => {
+    it('test swap', async () => {
       await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
       await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
 
