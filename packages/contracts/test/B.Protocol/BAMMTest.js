@@ -382,7 +382,7 @@ contract('BAMM', async accounts => {
       assert.equal((await bamm.balanceOf(A)).toString(), dec(1,18), "uncexpected bamm balance")
 
       // try to send bigger qty than balance
-      assertRevert(bamm.transfer(B, dec(2,18), {from: A}), "SafeMath: subtraction overflow")
+      await assertRevert(bamm.transfer(B, dec(2,18), {from: A}), "SafeMath: subtraction overflow")
 
       await bamm.transfer(B, dec(4, 17), {from: A})
       assert.equal((await bamm.balanceOf(A)).toString(), dec(6,17))
@@ -397,7 +397,7 @@ contract('BAMM', async accounts => {
       assert.equal((await bamm.allowance(A, C)).toString(), dec(6,16), "unexpected allowance")
 
       // try to send bigger qty than allowance
-      assertRevert(bamm.transferFrom(A, B, dec(1,17), {from: C}), "SafeMath: subtraction overflow")
+      await assertRevert(bamm.transferFrom(A, B, dec(1,17), {from: C}), "SafeMath: subtraction overflow")
 
       // make sure that balances are as expected
       assert.equal((await bamm.balanceOf(A)).toString(), dec(56,16))
