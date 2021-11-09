@@ -53,7 +53,7 @@ contract('BAMM', async accounts => {
   const feePool = "0x1000000000000000000000000000000000000001"
 
   const isWithin99Percent = (onePercent, b)=> {
-    return (b >= onePercent.mul(toBN(99)) && b <= onePercent.mul(toBN(100)))
+    return (b.gte(onePercent.mul(toBN(99))) && b.lte(onePercent.mul(toBN(100))))
   }
 
   //const assertRevert = th.assertRevert
