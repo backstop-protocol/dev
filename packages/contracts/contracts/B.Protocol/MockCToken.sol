@@ -18,7 +18,7 @@ contract MockCToken {
 
     function redeem(uint redeemTokens) external returns (uint) {
         require(balanceOf[msg.sender] >= redeemTokens, "redeem: insufficient ballance");
-
+        
         if(isEth) msg.sender.transfer(redeemTokens);
         else token.transfer(msg.sender, redeemTokens);
 
@@ -26,11 +26,13 @@ contract MockCToken {
     }
         
     function depositToken(uint amount) public {
+        require(!isEth, "depositToken: failed only ETH can be deposited use depositEther");
         token.transferFrom(msg.sender, address(this), amount);
         balanceOf[msg.sender] += amount;
     }
 
     function depositEther() public payable {
+        require(isEth, "depositEther: failed only ERC20 can be deposited use depositToken");
         balanceOf[msg.sender] += msg.value; 
     }
 
