@@ -140,6 +140,25 @@ contract('BAMM', async accounts => {
       assert.equal(isWithin99Percent(onePercent, callerEthDelta), true)
     })
 
+
+    it("reverts when liquidation discount is too low", async ()=>{
+      await bamm.setParams(20, 100, 50, {from: bammOwner})
+      const liquidationAmount = toBN(dec(1000, 7))
+      const collateralAmount = toBN(dec(3000, 18))
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      await cETH.depositEther({ from: yaron, value: collateralAmount})
+      await bamm.deposit(liquidationAmount, {from: shmuel})
+
+      await cLUSD.setCETHPrice(toBN(dec(103, 18+11-5))) // 1.03 ETH per 1000 USDT
+      await priceFeed.setPrice(dec(1000, 18));
+      // const min = "1.04ETH"
+      await assertRevert(
+        bamm.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel}),
+        "revert liquidation discount is too low"
+      )
+    })
+
     // bamm liquidate borrow: eth check collateral
     // failure tests
     // resolve conflicts
@@ -148,12 +167,8 @@ contract('BAMM', async accounts => {
       const liquidationAmount = toBN(dec(1000, 7))
 
       await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-
       await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
-      
-
       await bamm.deposit(liquidationAmount, {from: shmuel})
-
       await cLUSD.setCETHPrice(toBN(dec(3, 18)))
 
       const canLiquidate = await bamm.canLiquidate(cLUSD.address, cETH.address, liquidationAmount)
@@ -161,18 +176,9 @@ contract('BAMM', async accounts => {
 
       const cantLiquidate = await bamm.canLiquidate(cLUSD.address, cETH.address, liquidationAmount.add(toBN(1)))
       assert.equal(cantLiquidate, false)
-    })
 
-    it("canLiquidate when address are wrong", async ()=> {
-      const liquidationAmount = toBN(dec(1000, 7))
-
-      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
-      await bamm.deposit(liquidationAmount, {from: shmuel})
-      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
-
-      const canLiquidate = await bamm.canLiquidate(cLUSD.address, cLUSD.address, liquidationAmount)
-      assert.equal(canLiquidate, false)
+      const canLiquidate1 = await bamm.canLiquidate(cLUSD.address, cLUSD.address, liquidationAmount)
+      assert.equal(canLiquidate1, false)
 
       const canLiquidate2 = await bamm.canLiquidate(cETH.address, cETH.address, liquidationAmount.add(toBN(1)))
       assert.equal(canLiquidate2, false)
