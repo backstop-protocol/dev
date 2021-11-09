@@ -163,6 +163,21 @@ contract('BAMM', async accounts => {
       assert.equal(cantLiquidate, false)
     })
 
+    it("canLiquidate when address are wrong", async ()=> {
+      const liquidationAmount = toBN(dec(1000, 7))
+
+      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
+      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      await bamm.deposit(liquidationAmount, {from: shmuel})
+      await cLUSD.setCETHPrice(toBN(dec(3, 18)))
+
+      const canLiquidate = await bamm.canLiquidate(cLUSD.address, cLUSD.address, liquidationAmount)
+      assert.equal(canLiquidate, false)
+
+      const canLiquidate2 = await bamm.canLiquidate(cETH.address, cETH.address, liquidationAmount.add(toBN(1)))
+      assert.equal(canLiquidate2, false)
+    })
+
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
     it("deposit(): increases the Stability Pool LUSD balance", async () => {
