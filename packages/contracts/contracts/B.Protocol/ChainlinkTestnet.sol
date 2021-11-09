@@ -39,3 +39,23 @@ contract ChainlinkTestnet {
         else timestamp = time;
     }
 }
+
+contract FakePriceOracle {
+    address cETH;
+    address realOracle;
+    uint cETHPrice;
+
+    constructor(address _cETH, address _realOracle) public {
+        cETH = _cETH;
+        realOracle = _realOracle;
+    }
+
+    function setCETHPrice(uint _price) public {
+        cETHPrice = _price;
+    }
+
+    function getUnderlyingPrice(address ctoken) public returns(uint) {
+        if(ctoken == cETH) return cETHPrice;
+        return FakePriceOracle(realOracle).getUnderlyingPrice(ctoken);
+    }
+}

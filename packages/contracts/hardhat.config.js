@@ -63,12 +63,22 @@ module.exports = {
         ]
     },
     networks: {
+
         hardhat: {
             accounts: accountsList,
             gas: 10000000,  // tx gas limit
             blockGasLimit: 12500000, 
             gasPrice: 20000000000,
         },
+/*
+        hardhat: {
+            forking: {
+            //url: "https://arb1.arbitrum.io/rpc"
+            url: "https://rpc.ftm.tools"
+            }
+        },*/
+
+
         mainnet: {
             url: alchemyUrl(),
             gasPrice: process.env.GAS_PRICE ? parseInt(process.env.GAS_PRICE) : 20000000000,
