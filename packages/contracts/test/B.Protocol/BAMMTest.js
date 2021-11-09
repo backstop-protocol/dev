@@ -158,11 +158,7 @@ contract('BAMM', async accounts => {
         "revert liquidation discount is too low"
       )
     })
-
-    // bamm liquidate borrow: eth check collateral
-    // failure tests
-    // resolve conflicts
-
+    
     it("canLiquidate", async ()=> {
       const liquidationAmount = toBN(dec(1000, 7))
 
