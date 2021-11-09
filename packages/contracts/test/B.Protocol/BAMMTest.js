@@ -374,52 +374,44 @@ contract('BAMM', async accounts => {
       await assertRevert(bamm.setParams(20, 100, 50, {from: B}), 'Ownable: caller is not the owner')      
     })
 
-    it.skip('transfer happy test', async () => { // transfer is not supported anymore
-      // --- SETUP ---
-
-      // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: whale, value: dec(50, 'ether') } })
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: A } })
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: C } })
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: D } })            
+    it('ERC20 test', async () => { // transfer is not supported anymore
+      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: A})
+      await lusdToken.approve(bamm.address, toBN(dec(100000, 7)), { from: A })
+      await bamm.deposit(toBN(dec(100000, 7)), {from: A})
       
-      const whaleLUSD = await lusdToken.balanceOf(whale)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: whale })
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 18)), { from: A })
-      await bamm.deposit(toBN(dec(10000, 18)), { from: A } )
-      await stabilityPool.provideToSP(toBN(dec(10000, 18)), frontEnd_1, {from: C})
+      assert.equal((await bamm.balanceOf(A)).toString(), dec(1,18), "uncexpected bamm balance")
 
-      assert.equal(await bamm.balanceOf(A), dec(1, 18))
+      // try to send bigger qty than balance
+      assertRevert(bamm.transfer(B, dec(2,18), {from: A}), "SafeMath: subtraction overflow")
 
-      await th.fastForwardTime(timeValues.SECONDS_IN_ONE_HOUR, web3.currentProvider)
+      await bamm.transfer(B, dec(4, 17), {from: A})
+      assert.equal((await bamm.balanceOf(A)).toString(), dec(6,17))
+      assert.equal((await bamm.balanceOf(B)).toString(), dec(4,17))
 
-      await stabilityPool.provideToSP(toBN(dec(5000, 18)), frontEnd_1, {from: D})      
+      await bamm.approve(C, dec(1,17), {from: A})
+      assert.equal((await bamm.allowance(A, C)).toString(), dec(1,17), "unexpected allowance")
 
-      await bamm.transfer(B, dec(5, 17), {from: A})
-      assert.equal(await bamm.balanceOf(A), dec(5, 17))
-      assert.equal(await bamm.balanceOf(B), dec(5, 17))
+      await bamm.transferFrom(A, D, dec(4,16), {from: C})
+      assert.equal((await bamm.balanceOf(D)).toString(), dec(4,16))
+      assert.equal((await bamm.balanceOf(A)).toString(), dec(60 - 4,16))      
+      assert.equal((await bamm.allowance(A, C)).toString(), dec(6,16), "unexpected allowance")
 
-      await stabilityPool.withdrawFromSP(toBN(dec(5000, 18)), { from: C })
-      assert.equal(await lqtyToken.balanceOf(B), "0")
-      await bamm.withdraw(0, {from: A})
-      assert.equal((await lqtyToken.balanceOf(A)).toString(), (await lqtyToken.balanceOf(C)).toString())
+      // try to send bigger qty than allowance
+      assertRevert(bamm.transferFrom(A, B, dec(1,17), {from: C}), "SafeMath: subtraction overflow")
 
-      // reset A's usd balance
-      await lusdToken.transfer(C, await lusdToken.balanceOf(A), {from: A})
-      assert.equal(await lusdToken.balanceOf(A), "0")
+      // make sure that balances are as expected
+      assert.equal((await bamm.balanceOf(A)).toString(), dec(56,16))
+      assert.equal((await bamm.balanceOf(B)).toString(), dec(4,17))
+      assert.equal((await bamm.balanceOf(C)).toString(), "0")      
+      assert.equal((await bamm.balanceOf(D)).toString(), dec(4,16))
 
-      await th.fastForwardTime(timeValues.SECONDS_IN_ONE_HOUR, web3.currentProvider)      
+      await bamm.withdraw(dec(56, 16), {from: A})
+      await bamm.withdraw(dec(4, 17), {from: B})
+      await bamm.withdraw(dec(4, 16), {from: D})
 
-      await bamm.withdraw(toBN(dec(5, 17)), {from: A}) // check balance
-      await bamm.withdraw(toBN(dec(5, 17)), {from: B}) // check balance
-      await stabilityPool.withdrawFromSP(toBN(dec(5000, 18)), { from: C })
-      await stabilityPool.withdrawFromSP(toBN(dec(5000, 18)), { from: D })      
-
-      assert.equal((await lqtyToken.balanceOf(B)).toString(), (await lqtyToken.balanceOf(D)).toString())      
-      assert.equal((await lqtyToken.balanceOf(A)).toString(), (await lqtyToken.balanceOf(C)).toString())      
-
-      assert.equal((await lusdToken.balanceOf(B)).toString(), dec(5000, 18))            
-      assert.equal((await lusdToken.balanceOf(A)).toString(), dec(5000, 18))
+      assert.equal((await lusdToken.balanceOf(A)).toString(), dec(100000 * 56 / 100, 7))
+      assert.equal((await lusdToken.balanceOf(B)).toString(), dec(100000 * 4 / 10, 7))
+      assert.equal((await lusdToken.balanceOf(D)).toString(), dec(100000 * 4 / 100, 7))            
     })
 
 
