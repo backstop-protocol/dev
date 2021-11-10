@@ -249,6 +249,3 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }    
 }
 
-
-// TODO
-// 5) check return value of erc20
