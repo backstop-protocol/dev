@@ -27,7 +27,7 @@ contract TokenAdapter {
     function transfer(address to, uint tokens) public returns (bool success) {
         balanceOf[msg.sender] = balanceOf[msg.sender].sub(tokens);
         balanceOf[to] = balanceOf[to].add(tokens);
-        Transfer(msg.sender, to, tokens);
+        emit Transfer(msg.sender, to, tokens);
         return true;
     }
  
@@ -41,7 +41,7 @@ contract TokenAdapter {
         balanceOf[from] = balanceOf[from].sub(tokens);
         allowance[from][msg.sender] = allowance[from][msg.sender].sub(tokens);
         balanceOf[to] = balanceOf[to].add(tokens);
-        Transfer(from, to, tokens);
+        emit Transfer(from, to, tokens);
         return true;
     }
  
@@ -49,7 +49,7 @@ contract TokenAdapter {
     // If this function is called again it overwrites the current allowance with _value.
     function approve(address spender, uint tokens) public returns (bool success) {
         allowance[msg.sender][spender] = tokens;
-        Approval(msg.sender, spender, tokens);
+        emit Approval(msg.sender, spender, tokens);
         return true;
     }
 
