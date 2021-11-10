@@ -109,7 +109,7 @@ contract('BAMM', async accounts => {
       await cLUSD.setCETHPrice(toBN(dec(3, 18)))
       await assertRevert(
         cLUSD.liquidateBorrow(yaron, liquidationAmount.add(toBN(1)), cETH.address, {from: shmuel})
-      , "revert SafeMath: subtraction overflow")
+      , "SafeMath: subtraction overflow")
     })
 
     it("liquidateBorrow bamm", async () => {
@@ -155,7 +155,7 @@ contract('BAMM', async accounts => {
       // const min = "1.04ETH"
       await assertRevert(
         bamm.liquidateBorrow(yaron, liquidationAmount, cETH.address, {from: shmuel}),
-        "revert liquidation discount is too low"
+        "liquidation discount is too low"
       )
     })
     
