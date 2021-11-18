@@ -71,42 +71,55 @@ contract('BAMM', async accounts => {
     })
 
     it("Arb", async () => {
-      const whale = "0xc75a0FF40db54203D66bff76315ed25d66037Ce1" // has eth and usdt
+      const whale = "0x23cBF6d1b738423365c6930F075Ed6feEF7d14f3" // has eth and usdt
 
+      const arbAddress = "0xcEAF62Ba209e2FB7990D29c5f5157377D54FC7b2"
+      const keeperAddress = "0x102887d6bFC58B0abE721AAD1ce5A036ACe542c8"
+/*
       await hre.network.provider.request({
         method: "hardhat_impersonateAccount",
         params: [whale], 
-      })
+      })*/
 
-      const reserve = await (artifacts.require("UniswapReserve.sol")).at("0x641C00A822e8b671738d32a431a4Fb6074E5c79d")
+      const factory = await (artifacts.require("UniswapFactory.sol")).at("0x1F98431c8aD98523631AE4a59f267346ea31F984")      
+      console.log(await factory.getPool.call("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", 500))
+            
+
+      const reserve = await (artifacts.require("UniswapReserve.sol")).at("0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443")
 
 
       console.log(await reserve.token0())
       console.log(await reserve.token1())
 
-      const arb = await Arb.new({from: whale})
+      const arb = await Arb.at(arbAddress)
       bamm = await BAMM.at("0x24099000AE45558Ce4D049ad46DDaaf71429b168")
 
       console.log("giving allowance")
-      await arb.approve(bamm.address, {from: whale})
-
-      const arbChecker = await (artifacts.require("ArbChecker.sol")).new(arb.address,{from:whale})
-
-      const bKeeperImpl = await (artifacts.require("BKeeper.sol")).new(arb.address, arbChecker.address, {from:whale})
-      const proxy = await (artifacts.require("KeeperProxy.sol")).new(bKeeperImpl.address, {from:whale})
-      const gelato = await (artifacts.require("BGelato.sol")).new(proxy.address, {from:whale})
-      const bKeeper = await (artifacts.require("BKeeper.sol")).at(proxy.address)
+      //await arb.approve(bamm.address, {from: whale})
 
       
 
-      await bKeeper.initParams(dec(1,18), "0", "0", {from: whale})
-      await bKeeper.addBamm(bamm.address, {from: whale})      
+
+      //const arbChecker = await (artifacts.require("ArbChecker.sol")).new(arb.address,{from:whale})
+
+      const bKeeperImpl = await (artifacts.require("BKeeper.sol")).at(keeperAddress)
+      //const proxy = await (artifacts.require("KeeperProxy.sol")).new(bKeeperImpl.address, {from:whale})
+      //const gelato = await (artifacts.require("BGelato.sol")).new(proxy.address, {from:whale})
+      const bKeeper = bKeeperImpl //await (artifacts.require("BKeeper.sol")).at(proxy.address)
+
+      
+
+      //await bKeeper.initParams(dec(1,18), "0", 100, {from: whale})
+
+      //await bKeeper.setMinEthQty(1, {from: whale})
+      //await bKeeper.setMaxEthQty(dec(1,18), {from: whale})            
+      //await bKeeper.addBamm(bamm.address, {from: whale})      
       console.log("checker()")
-      const retVal = await gelato.checker.call()
+      const retVal = await bKeeper.checker.call(/*{gas:100000000}*/)
       console.log(retVal[0].toString())
       console.log(retVal[1].toString())
       console.log((await web3.eth.getBalance(bKeeper.address)).toString())
-      await web3.eth.sendTransaction({from: whale, to: gelato.address, data: retVal[1]})       
+      await web3.eth.sendTransaction({from: whale, to: bKeeper.address, data: retVal[1]})       
       //await gelato.doer(retVal[1], {from: whale})
       console.log((await web3.eth.getBalance(bKeeper.address)).toString())            
       return
