@@ -149,7 +149,7 @@ contract('BAMM', async accounts => {
       console.log("bamm address", bamm.address)
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol(bamm.address, {from: fvat, block: "latest"})
+      await unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fvat, block: "latest"})
       console.log("set b.protocol - done")
 
       console.log("give allowance to bamm")
@@ -184,7 +184,7 @@ contract('BAMM', async accounts => {
 
     it("try to set bprotocol from non owner", async () => {
       const unicomptroller = await Comptroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
-      await assertRevert(unicomptroller._setBProtocol(bamm.address, {from: fish}), "only admin can set B.Protocol")
+      await assertRevert(unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fish}), "only admin can set B.Protocol")
     })
 
     it("liquidate without b.protocol - b.protocol not set", async () => {
@@ -192,7 +192,9 @@ contract('BAMM', async accounts => {
       const unitroller = await Unitroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol("0x0000000000000000000000000000000000000000", {from: fvat, block: "latest"})
+      await unicomptroller._setBProtocol(cUSDTAddress, "0x0000000000000000000000000000000000000000", {from: fvat, block: "latest"})
+      // set something but not for this ctoken
+      await unicomptroller._setBProtocol(fvat, fvat, {from: fvat, block: "latest"})      
       console.log("set b.protocol - done")
 
       console.log("whale balance:", (await usdt.balanceOf(whale)).toString())
@@ -214,8 +216,8 @@ contract('BAMM', async accounts => {
       const unitroller = await Unitroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol(bamm.address, {from: fvat, block: "latest"})
-      assert.equal(await unicomptroller.bprotocol(), bamm.address, "unexpected b.protocol address")
+      await unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fvat, block: "latest"})
+      assert.equal(await unicomptroller.bprotocol(cUSDTAddress), bamm.address, "unexpected b.protocol address")
       console.log("set b.protocol - done")
 
       console.log("withdraw all bamm balance")

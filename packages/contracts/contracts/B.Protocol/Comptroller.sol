@@ -433,11 +433,6 @@ contract CErc20Storage {
     address public underlying;
 }
 
-contract CETH {
-    function mint() external returns (uint);
-    function transfer(address dst, uint256 amount) external returns (bool success);      
-}
-
 contract CErc20Interface is CErc20Storage {
 
     /*** User Interface ***/
@@ -2861,8 +2856,8 @@ contract ComptrollerV5Storage is ComptrollerV4Storage {
 }
 
 contract ComptrollerV6Storage is ComptrollerV5Storage {
-    /// @notice address of B.Protocol
-    IBProtocol public bprotocol;
+    /// @notice CToken => IBProtocol (per CToken debt)
+    mapping(address => address) public bprotocol;
 }
 
 
@@ -3103,7 +3098,7 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
     event CompGranted(address recipient, uint amount);
 
     /// @notice Emitted when B.Protocol is changed
-    event NewBProtocol(IBProtocol oldBProtocol, IBProtocol newBProtocol);
+    event NewBProtocol(address indexed cToken, address oldBProtocol, address newBProtocol);
 
     /// @notice The initial COMP index for a market
     uint224 public constant compInitialIndex = 1e36;
@@ -3526,8 +3521,9 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         }
 
         /* Only B.Protocol can liquidate */
-        if(bprotocol != IBProtocol(0) && bprotocol.canLiquidate(cTokenBorrowed, cTokenCollateral, repayAmount)) {
-            require(IBProtocol(liquidator) == bprotocol, "only B.Protocol can liquidate");
+        address bLiquidator = bprotocol[address(cTokenBorrowed)];
+        if(bLiquidator != address(0) && IBProtocol(bLiquidator).canLiquidate(cTokenBorrowed, cTokenCollateral, repayAmount)) {
+            require(liquidator == bLiquidator, "only B.Protocol can liquidate");
         }
 
         return uint(Error.NO_ERROR);
@@ -4324,11 +4320,11 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
         emit ContributorCompSpeedUpdated(contributor, compSpeed);
     }
 
-   function _setBProtocol(IBProtocol newBProtocol) public returns (uint) {
+   function _setBProtocol(address cToken, address newBProtocol) public returns (uint) {
         require(adminOrInitializing(), "only admin can set B.Protocol");
 
-        emit NewBProtocol(bprotocol, newBProtocol);
-        bprotocol = newBProtocol;
+        emit NewBProtocol(cToken, bprotocol[cToken], newBProtocol);
+        bprotocol[cToken] = newBProtocol;
 
         return uint(Error.NO_ERROR);
     }
@@ -4353,4 +4349,9 @@ contract Comptroller is ComptrollerV6Storage, ComptrollerInterface, ComptrollerE
     function getCompAddress() public pure returns (address) {
         return 0x10010078a54396F62c96dF8532dc2B4847d47ED3;
     }
+}
+
+contract CETH {
+    function mint() external returns (uint);
+    function transfer(address dst, uint256 amount) external returns (bool success);      
 }
