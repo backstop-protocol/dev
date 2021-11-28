@@ -1,0 +1,16 @@
+{
+  "name": "liquidator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "liquidator.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1037.0",
+    "axios": "^0.24.0",
+    "web3": "^1.6.1"
+  }
+}
