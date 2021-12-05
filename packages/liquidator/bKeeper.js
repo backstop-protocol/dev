@@ -15,9 +15,11 @@ const check = async () => {
 
 // preform
 const preform = async (data) => {
+  const {privateKey} = secret.privateKey
+  const account = web3.eth.accounts.privateKeyToAccount(privateKey)
   console.log("preforming upkeep...")
   const bKeeper = new web3.eth.Contract(abi.bKeeper, "0x102887d6bFC58B0abE721AAD1ce5A036ACe542c8")
-  await bKeeper.methods.checkUpkeep(data).call({gas: 100000000})
+  await bKeeper.methods.performUpkeep(data).send({from: account.address, gas:3120853})
 }
 
 const run = async () => {
