@@ -34,7 +34,7 @@ const run = async () => {
 }
 
 module.exports = {
-  run
+  runBKeeper: run
 }
 
 

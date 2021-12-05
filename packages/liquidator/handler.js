@@ -1,6 +1,6 @@
 'use strict';
 const {runOnLambda} = require('./liquidator')
-const {run} = require('./bKeeper')
+const {runBKeeper} = require('./bKeeper')
 
 module.exports.liquidate = async (event) => {
   try{
@@ -34,7 +34,7 @@ module.exports.liquidate = async (event) => {
 
 module.exports.bKeeper = async (event) => {
   try{
-  await run()
+  await runBKeeper()
   return {
       statusCode: 200,
       body: JSON.stringify(
