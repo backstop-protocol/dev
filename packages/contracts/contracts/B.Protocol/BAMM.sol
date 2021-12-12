@@ -196,29 +196,29 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         return n.mul(uint(10000 + bps)) / 10000;
     }
 
-    function getSwapAmount(uint lusdQty, IERC20 token) public view returns(uint ethAmount) {
+    function getSwapAmount(uint lusdQty, IERC20 token) public view returns(uint tokenAmount) {
         uint lusdBalance = LUSD.balanceOf(address(this));
-        uint ethBalance  = token.balanceOf(address(this));
+        uint tokenBalance  = token.balanceOf(address(this));
 
-        (bool succ, uint ethUsdValue) = getCollateralValue();
+        (bool succ, uint collateralValue) = getCollateralValue();
         if(! succ) return 0; // chainlink is down
 
-        uint eth2usdPrice = fetchPrice(token);
-        if(eth2usdPrice == 0) return 0; // chainlink is down
+        uint token2usdPrice = fetchPrice(token);
+        if(token2usdPrice == 0) return 0; // chainlink is down
 
-        uint maxReturn = addBps(lusdQty.mul(PRECISION) / eth2usdPrice, int(maxDiscount));
+        uint maxReturn = addBps(lusdQty.mul(PRECISION) / token2usdPrice, int(maxDiscount));
 
         uint xQty = lusdQty;
         uint xBalance = lusdBalance;
-        uint yBalance = lusdBalance.add(ethUsdValue.mul(2));
+        uint yBalance = lusdBalance.add(collateralValue.mul(2));
         
         uint usdReturn = getReturn(xQty, xBalance, yBalance, A);
-        uint basicEthReturn = usdReturn.mul(PRECISION) / eth2usdPrice;
+        uint basicTokenReturn = usdReturn.mul(PRECISION) / token2usdPrice;
 
-        if(ethBalance < basicEthReturn) basicEthReturn = ethBalance; // cannot give more than balance 
-        if(maxReturn < basicEthReturn) basicEthReturn = maxReturn;
+        if(tokenBalance < basicTokenReturn) basicTokenReturn = tokenBalance; // cannot give more than balance 
+        if(maxReturn < basicTokenReturn) basicTokenReturn = maxReturn;
 
-        ethAmount = basicEthReturn;
+        tokenAmount = basicTokenReturn;
     }
 
     // get token in return to LUSD
@@ -264,15 +264,15 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     function liquidateBorrow(address borrower, uint amount, ICToken collateral) external returns (uint) {
         IERC20 colToken = IERC20(collateral.underlying());
 
-        uint ethBalBefore = colToken.balanceOf(address(this));
+        uint tokenBalBefore = colToken.balanceOf(address(this));
         require(cBorrow.liquidateBorrow(borrower, amount, address(collateral)) == 0, "liquidateBorrow: liquidation failed");
         require(collateral.redeem(collateral.balanceOf(address(this))) == 0, "liquidateBorrow: collateral redeem failed");       
-        uint ethBalAfter = colToken.balanceOf(address(this));
+        uint tokenBalAfter = colToken.balanceOf(address(this));
 
-        uint deltaEth = ethBalAfter.sub(ethBalBefore);
-        if(collateral == cBorrow) deltaEth = amount;
+        uint deltaToken = tokenBalAfter.sub(tokenBalBefore);
+        if(collateral == cBorrow) deltaToken = amount;
 
-        uint feeAmount = addBps(deltaEth, int(callerFee)).sub(deltaEth);
+        uint feeAmount = addBps(deltaToken, int(callerFee)).sub(deltaToken);
         if(feeAmount > 0 ) colToken.transfer(borrower, feeAmount);
     }    
 }
