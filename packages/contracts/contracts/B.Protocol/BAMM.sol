@@ -15,15 +15,16 @@ interface ICToken {
     function redeem(uint redeemTokens) external returns (uint);
     function balanceOf(address a) external view returns (uint);
     function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint);
+    function underlying() external view returns(address);
 }
 
 contract BAMM is TokenAdapter, PriceFormula, Ownable {
     using SafeMath for uint256;
 
-    AggregatorV3Interface public immutable priceAggregator;
+    mapping(address => AggregatorV3Interface) public priceAggregators;
     IERC20 public immutable LUSD;
     uint public immutable lusdDecimals;
-    ICToken public immutable cETH;
+    IERC20[] public collaterals; // IMPORTANT - collateral != LUSD
     ICToken public immutable cBorrow;
 
     address payable public immutable feePool;
@@ -41,26 +42,24 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
 
     event ParamsSet(uint A, uint fee, uint callerFee);
     event UserDeposit(address indexed user, uint lusdAmount, uint numShares);
-    event UserWithdraw(address indexed user, uint lusdAmount, uint ethAmount, uint numShares);
-    event RebalanceSwap(address indexed user, uint lusdAmount, uint ethAmount, uint timestamp);
+    event UserWithdraw(address indexed user, uint lusdAmount, uint numShares);
+    event RebalanceSwap(address indexed user, uint lusdAmount, IERC20 token, uint tokenAmount, uint timestamp);
 
     constructor(
-        address _priceAggregator,
         address _LUSD,
-        address _cETH,
         address _cBorrow,
         uint _maxDiscount,
         address payable _feePool)
         public
     {
-        priceAggregator = AggregatorV3Interface(_priceAggregator);
         LUSD = IERC20(_LUSD);
         lusdDecimals = IERC20(_LUSD).decimals();
-        cETH = ICToken(_cETH);
         cBorrow = ICToken(_cBorrow);
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
+
+        IERC20(_LUSD).approve(address(_cBorrow), uint(-1));
 
         require(IERC20(_LUSD).decimals() <= 18, "unsupported decimals");
     }
@@ -78,7 +77,10 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         emit ParamsSet(_A, _fee, _callerFee);
     }
 
-    function fetchPrice() public view returns(uint) {
+    function fetchPrice(IERC20 token) public view returns(uint) {
+        AggregatorV3Interface priceAggregator = priceAggregators[address(token)];
+        if(priceAggregator == AggregatorV3Interface(address(0x0))) return 0;
+
         uint chainlinkDecimals;
         uint chainlinkLatestAnswer;
         uint chainlinkTimestamp;
@@ -116,15 +118,34 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         return chainlinkLatestAnswer.mul(PRECISION) / chainlinkFactor;
     }
 
+    function getCollateralValue() public view returns(bool succ, uint value) {
+        value = 0;
+        succ = true;
+
+        for(uint i = 0 ; i < collaterals.length ; i++) {
+            IERC20 token = collaterals[i];
+            uint bal = token.balanceOf(address(this));
+            if(bal > 0) {
+                uint price = fetchPrice(token);
+                if(price == 0) {
+                    succ = false;
+                    break;
+                }
+
+                value = value.add(bal.mul(price) / PRECISION);                
+            }
+        }
+    }
+
+
     function deposit(uint lusdAmount) external {        
         // update share
         uint lusdValue = LUSD.balanceOf(address(this));
-        uint ethValue = address(this).balance;
+        (bool succ, uint colValue) = getCollateralValue();
 
-        uint price = fetchPrice();
-        require(ethValue == 0 || price > 0, "deposit: chainlink is down");
+        require(succ, "deposit: chainlink is down");
 
-        uint totalValue = lusdValue.add(ethValue.mul(price) / PRECISION);
+        uint totalValue = lusdValue.add(colValue);
 
         // this is in theory not reachable. if it is, better halt deposits
         // the condition is equivalent to: (totalValue = 0) ==> (totalSupply = 0)
@@ -143,23 +164,29 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
     function withdraw(uint numShares) external {
-        uint lusdValue = LUSD.balanceOf(address(this));
-        uint ethValue = address(this).balance;
+        uint supplyBefore = totalSupply; // this is to save gas
 
-        uint lusdAmount = lusdValue.mul(numShares).div(totalSupply);
-        uint ethAmount = ethValue.mul(numShares).div(totalSupply);
+        uint lusdBal = LUSD.balanceOf(address(this));
+        uint lusdAmount = lusdBal.mul(numShares).div(supplyBefore);
+
+        uint[] memory collateralAmounts = new uint[](collaterals.length);
+        IERC20[] memory collateralTypes = collaterals;
+
+        for(uint i = 0 ; i < collateralTypes.length ; i++) {
+            uint bal = collateralTypes[i].balanceOf(address(this));
+            collateralAmounts[i] = bal.mul(numShares).div(supplyBefore);
+        }
 
         // update LP token
         burn(msg.sender, numShares);
 
-        // send lusd and eth
+        // send lusd and collateral leftovers
         if(lusdAmount > 0) LUSD.transfer(msg.sender, lusdAmount);
-        if(ethAmount > 0) {
-            (bool success, ) = msg.sender.call{ value: ethAmount }(""); // re-entry is fine here
-            require(success, "withdraw: sending ETH failed");
+        for(uint i = 0 ; i < collateralTypes.length ; i++) {
+            if(collateralAmounts[i] > 0 ) collateralTypes[i].transfer(msg.sender, collateralAmounts[i]); // re-entry is fine here (?)
         }
 
-        emit UserWithdraw(msg.sender, lusdAmount, ethAmount, numShares);            
+        emit UserWithdraw(msg.sender, lusdAmount, numShares);            
     }
 
     function addBps(uint n, int bps) internal pure returns(uint) {
@@ -169,14 +196,16 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         return n.mul(uint(10000 + bps)) / 10000;
     }
 
-    function getSwapEthAmount(uint lusdQty) public view returns(uint ethAmount) {
+    function getSwapAmount(uint lusdQty, IERC20 token) public view returns(uint ethAmount) {
         uint lusdBalance = LUSD.balanceOf(address(this));
-        uint ethBalance  = address(this).balance;
+        uint ethBalance  = token.balanceOf(address(this));
 
-        uint eth2usdPrice = fetchPrice();
+        (bool succ, uint ethUsdValue) = getCollateralValue();
+        if(! succ) return 0; // chainlink is down
+
+        uint eth2usdPrice = fetchPrice(token);
         if(eth2usdPrice == 0) return 0; // chainlink is down
 
-        uint ethUsdValue = ethBalance.mul(eth2usdPrice) / PRECISION;
         uint maxReturn = addBps(lusdQty.mul(PRECISION) / eth2usdPrice, int(maxDiscount));
 
         uint xQty = lusdQty;
@@ -192,60 +221,59 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         ethAmount = basicEthReturn;
     }
 
-    // get ETH in return to LUSD
-    function swap(uint lusdAmount, uint minEthReturn, address payable dest) public returns(uint) {
-        uint ethAmount = getSwapEthAmount(lusdAmount);
+    // get token in return to LUSD
+    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public returns(uint) {
+        require(returnToken != LUSD, "swap: hack someone else");
 
-        require(ethAmount >= minEthReturn, "swap: low return");
+        uint returnAmount = getSwapAmount(lusdAmount, returnToken);
+
+        require(returnAmount >= minReturn, "swap: low return");
 
         require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "swap: transferFrom failed");
 
         uint feeAmount = addBps(lusdAmount, int(fee)).sub(lusdAmount);
         if(feeAmount > 0) require(LUSD.transfer(feePool, feeAmount), "swap: transfer failed");
 
-        (bool success, ) = dest.call{ value: ethAmount }(""); // re-entry is fine here
-        require(success, "swap: sending ETH failed");
+        require(returnToken.transfer(dest, returnAmount), "swap: transfer token failed");
 
-        emit RebalanceSwap(msg.sender, lusdAmount, ethAmount, now);
+        emit RebalanceSwap(msg.sender, lusdAmount, returnToken, returnAmount, now);
 
-        return ethAmount;
+        return returnAmount;
     }
 
     receive() external payable {}
 
     function canLiquidate(
-        address cTokenBorrowed,
-        address cTokenCollateral,
+        ICToken cTokenBorrowed,
+        ICToken cTokenCollateral,
         uint repayAmount
     )
         external
         view
         returns(bool)
     {
-        if(cTokenBorrowed != address(cBorrow)) return false;
-        if(cTokenCollateral != address(cETH)) return false;
+        if(cTokenBorrowed != cBorrow) return false;
+
+        AggregatorV3Interface feed = priceAggregators[cTokenCollateral.underlying()];
+        if((feed == AggregatorV3Interface(0)) && (cTokenCollateral != cTokenBorrowed)) return false;
 
         return repayAmount <= LUSD.balanceOf(address(this));
     }
 
     // callable by anyone
-    function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint) {
-        require(collateral == address(cETH), "liquidateBorrow: only cETH collateral is allowed");
+    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external returns (uint) {
+        IERC20 colToken = IERC20(collateral.underlying());
 
-        uint ethBalBefore = address(this).balance;
-        IERC20(LUSD).approve(address(cBorrow), amount);
-        require(cBorrow.liquidateBorrow(borrower, amount, collateral) == 0, "liquidateBorrow: liquidation failed");
-        IERC20(LUSD).approve(address(cBorrow), 0);
-        require(cETH.redeem(cETH.balanceOf(address(this))) == 0, "liquidateBorrow: cETH redeem failed");
-        uint ethBalAfter = address(this).balance;
+        uint ethBalBefore = colToken.balanceOf(address(this));
+        require(cBorrow.liquidateBorrow(borrower, amount, address(collateral)) == 0, "liquidateBorrow: liquidation failed");
+        require(collateral.redeem(collateral.balanceOf(address(this))) == 0, "liquidateBorrow: collateral redeem failed");       
+        uint ethBalAfter = colToken.balanceOf(address(this));
 
         uint deltaEth = ethBalAfter.sub(ethBalBefore);
-        uint feeAmount = addBps(deltaEth, int(callerFee)).sub(deltaEth);
-        if(feeAmount > 0 ) msg.sender.transfer(feeAmount);
+        if(collateral == cBorrow) deltaEth = amount;
 
-        // do sanity check on the price
-        uint price = fetchPrice();
-        require(deltaEth.mul(price) / PRECISION >= addBps(amount, int(maxDiscount)), "liquidation discount is too low");
+        uint feeAmount = addBps(deltaEth, int(callerFee)).sub(deltaEth);
+        if(feeAmount > 0 ) colToken.transfer(borrower, feeAmount);
     }    
 }
 
