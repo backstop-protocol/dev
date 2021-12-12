@@ -77,6 +77,26 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         emit ParamsSet(_A, _fee, _callerFee);
     }
 
+    function addCollateral(IERC20 token, AggregatorV3Interface feed) external onlyOwner {
+        require(token != LUSD, "addCollateral: LUSD cannot be collateral");
+        require(feed != AggregatorV3Interface(0x0), "addCollateral: invalid feed");
+        require(priceAggregators[address(token)] == AggregatorV3Interface(0x0), "addCollateral: collateral listed");
+
+        collaterals.push(token);
+        priceAggregators[address(token)] = feed;
+    }
+
+    function removeCollateral(IERC20 token) external onlyOwner {
+        for(uint i = 0 ; i < collaterals.length ; i++) {
+            if(collaterals[i] == token) {
+                collaterals[i] = collaterals[collaterals.length - 1];
+                collaterals.pop();
+                priceAggregators[address(token)] = AggregatorV3Interface(0x0);
+                break;
+            }
+        }
+    }
+
     function fetchPrice(IERC20 token) public view returns(uint) {
         AggregatorV3Interface priceAggregator = priceAggregators[address(token)];
         if(priceAggregator == AggregatorV3Interface(address(0x0))) return 0;
