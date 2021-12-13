@@ -21,10 +21,11 @@ interface ICToken {
 contract BAMM is TokenAdapter, PriceFormula, Ownable {
     using SafeMath for uint256;
 
-    mapping(address => AggregatorV3Interface) public priceAggregators;
     IERC20 public immutable LUSD;
     uint public immutable lusdDecimals;
     IERC20[] public collaterals; // IMPORTANT - collateral != LUSD
+    mapping(address => AggregatorV3Interface) public priceAggregators;
+    mapping(address => uint) public collateralDecimals;    
     ICToken public immutable cBorrow;
 
     address payable public immutable feePool;
@@ -84,6 +85,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
 
         collaterals.push(token);
         priceAggregators[address(token)] = feed;
+        collateralDecimals[address(token)] = token.decimals();
     }
 
     function removeCollateral(IERC20 token) external onlyOwner {
@@ -134,8 +136,13 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
 
         if(chainlinkTimestamp + 1 hours < now) return 0; // price is down
 
-        uint chainlinkFactor = (10 ** (18 + chainlinkDecimals - lusdDecimals));
-        return chainlinkLatestAnswer.mul(PRECISION) / chainlinkFactor;
+        int chainlinkDecimalFactor = int(chainlinkDecimals + collateralDecimals[address(token)]) - int(lusdDecimals);
+        if(chainlinkDecimalFactor >= 0) {
+            return chainlinkLatestAnswer.mul(PRECISION) / (10 ** uint(chainlinkDecimalFactor));
+        }
+        else {
+            return chainlinkLatestAnswer.mul(PRECISION) * (10 ** uint(-1 * chainlinkDecimalFactor));
+        }
     }
 
     function getCollateralValue() public view returns(bool succ, uint value) {
