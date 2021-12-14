@@ -12,13 +12,14 @@ contract ChainlinkTestnet {
     
     uint price;
     uint time = 0;
+    uint public decimals = 18;
 
     function setPrice(uint _price) external {
         price = _price;
     }
 
-    function decimals() external pure returns(uint) {
-        return 18;
+    function setDecimals(uint _decimals) external {
+        decimals = _decimals;
     }
 
     function setTimestamp(uint _time) external {

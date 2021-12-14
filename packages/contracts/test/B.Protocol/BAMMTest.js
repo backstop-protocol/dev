@@ -82,7 +82,7 @@ contract('BAMM', async accounts => {
 
       token0 = await MockToken.new(12)
       token1 = await MockToken.new(13)
-      token2 = await MockToken.new(14)
+      token2 = await MockToken.new(4)
 
       cToken0 = await MockCToken.new(token0.address, false)
       cToken1 = await MockCToken.new(token1.address, false)
@@ -277,7 +277,7 @@ contract('BAMM', async accounts => {
       // send $6k collateral to bamm, mimics liquidations
       await token0.mintToken(bamm.address, toBN(dec(1000, 12))) // $3k
       await token1.mintToken(bamm.address, toBN(dec(200, 13))) // $1k
-      await token2.mintToken(bamm.address, toBN(dec(500, 14))) // $2k
+      await token2.mintToken(bamm.address, toBN(dec(500, 4))) // $2k
 
       // price set so that total collateral is $6k
       await priceFeed0.setPrice(dec(3, 18));
@@ -317,7 +317,7 @@ contract('BAMM', async accounts => {
       // token 0-2
       assert.equal(toBN(dec(500, 12)).toString(), token0BalAfter.sub(token0BalBefore).toString())
       assert.equal(toBN(dec(100, 13)).toString(), token1BalAfter.sub(token1BalBefore).toString())
-      assert.equal(toBN(dec(250, 14)).toString(), token2BalAfter.sub(token2BalBefore).toString())
+      assert.equal(toBN(dec(250, 4)).toString(), token2BalAfter.sub(token2BalBefore).toString())
     })
 
     it.only('price exceed max dicount and/or collateral balance', async () => {
@@ -370,7 +370,7 @@ contract('BAMM', async accounts => {
       // send ETH to bamm, mimics liquidations. total of 420 usd
       await token0.mintToken(bamm.address, toBN(dec(2, 12)))
       await token1.mintToken(bamm.address, toBN(dec(1, 13)))
-      await token2.mintToken(bamm.address, toBN(dec(1, 14)))      
+      await token2.mintToken(bamm.address, toBN(dec(1, 4)))      
       
       const lusdQty = dec(105, 7)
       const expectedReturn = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(toBN(dec(2 * 420, 7))), 200)
@@ -381,12 +381,22 @@ contract('BAMM', async accounts => {
       assert.equal(priceWithoutFee.toString(), expectedReturn.mul(toBN(dec(1,12 - 7))).div(toBN(105)).toString())
     })    
 
-    it('test fetch price', async () => {
-      await priceFeed.setPrice(dec(666, 18));
-      assert.equal(await bamm.fetchPrice(), dec(666, 7))
+    it.only('test fetch price', async () => {
+      await priceFeed0.setPrice(dec(666, 18));
+      await priceFeed1.setPrice(dec(333, 18));
+      await priceFeed2.setPrice(dec(111, 18));      
+      
+      assert.equal((await bamm.fetchPrice(token0.address)).toString(), dec(666, 18 - (12 - 7)))
+      assert.equal((await bamm.fetchPrice(token1.address)).toString(), dec(333, 18 - (13 - 7)))
+      assert.equal((await bamm.fetchPrice(token2.address)).toString(), dec(111, 18 - ( 4 - 7)))
+      
+      await priceFeed2.setDecimals(2)
+      await priceFeed2.setPrice(dec(111, 2));
+      assert.equal((await bamm.fetchPrice(token2.address)).toString(), dec(111, 18 - ( 4 - 7)))      
 
-      await chainlink.setTimestamp(888)
-      assert.equal((await bamm.fetchPrice()).toString(), "0")      
+
+      await priceFeed0.setTimestamp(888)
+      assert.equal((await bamm.fetchPrice(token0.address)).toString(), "0")      
     })
 
     it('test swap', async () => {
