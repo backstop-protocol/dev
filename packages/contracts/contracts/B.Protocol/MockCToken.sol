@@ -16,6 +16,11 @@ contract MockCToken {
         isEth = _isETH;
     }
 
+    function underlying() external returns(IERC20) {
+        require(! isEth, "underlying: unsupported");
+        return token;
+    }
+
     function redeem(uint redeemTokens) external returns (uint) {
         require(balanceOf[msg.sender] >= redeemTokens, "redeem: insufficient ballance");
         

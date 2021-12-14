@@ -10,11 +10,11 @@ import "./../TestContracts/PriceFeedTestnet.sol";
 */
 contract ChainlinkTestnet {
     
-    PriceFeedTestnet feed;
+    uint price;
     uint time = 0;
 
-    constructor(PriceFeedTestnet _feed) public {
-        feed = _feed;
+    function setPrice(uint _price) external {
+        price = _price;
     }
 
     function decimals() external pure returns(uint) {
@@ -34,7 +34,7 @@ contract ChainlinkTestnet {
         uint80 /* answeredInRound */
     )
     {
-        answer = int(feed.getPrice());
+        answer = int(price);
         if(time == 0 ) timestamp = now;
         else timestamp = time;
     }
