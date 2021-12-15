@@ -562,23 +562,45 @@ contract('BAMM', async accounts => {
       assert.equal((await lusdToken.balanceOf(D)).toString(), dec(100000 * 4 / 100, 7))            
     })
 
+    it('test remove collateral', async () => {
+      await priceFeed0.setPrice(dec(1, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
 
-    // tests:
-    // 1. complex lqty staking + share V
-    // 2. share test with ether V
-    // 3. basic share with liquidation (withdraw after liquidation) V
-    // 4. price that exceeds max discount V
-    // 5. price that exceeds balance V
-    // 5.5 test fees and return V
-    // 5.6 test swap  v
-    // 6.1 test fetch price V
-    // 6. set params V
-    // 7. test with front end v
-    // 8. formula V
-    // 9. lp token - transfer sad test
-    // 11. pickle V
-    // 10. cleanups - compilation warnings. cropjoin - revoke changes and maybe make internal. V
-    // 12 - linter. events
+      await token0.mintToken(bamm.address, dec(1,12))
+      await token1.mintToken(bamm.address, dec(1,13))
+      await token2.mintToken(bamm.address, dec(1,4))
+      
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(6, 7))
+      assert(await bamm.cTokens(cToken0.address))
+      assert(await bamm.cTokens(cToken1.address))
+      assert(await bamm.cTokens(cToken2.address))
+      assert((await bamm.priceAggregators(token0.address)).toString() !== ZERO_ADDRESS)
+      assert((await bamm.priceAggregators(token1.address)).toString() !== ZERO_ADDRESS)
+      assert((await bamm.priceAggregators(token2.address)).toString() !== ZERO_ADDRESS)      
+
+
+      await bamm.removeCollateral(cToken1.address, {from: bammOwner})      
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(4, 7))
+      assert(! await bamm.cTokens(cToken1.address))
+      assert.equal((await bamm.priceAggregators(token1.address)).toString(), ZERO_ADDRESS)      
+      
+      await bamm.removeCollateral(cToken0.address, {from: bammOwner})      
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(3, 7))
+      assert(! await bamm.cTokens(cToken0.address))
+      assert.equal((await bamm.priceAggregators(token0.address)).toString(), ZERO_ADDRESS)
+
+      await bamm.removeCollateral(cToken2.address, {from: bammOwner})      
+      assert.equal((await bamm.getCollateralValue()).value.toString(), "0")
+      assert(! await bamm.cTokens(cToken2.address))
+      assert.equal((await bamm.priceAggregators(token2.address)).toString(), ZERO_ADDRESS)      
+    })
+
+
+
+    // TODO:
+    // sad paths
+    // rari compound code
   })
 })
 
