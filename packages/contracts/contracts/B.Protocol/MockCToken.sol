@@ -16,7 +16,7 @@ contract MockCToken {
         isEth = _isETH;
     }
 
-    function underlying() external returns(IERC20) {
+    function underlying() external view returns(IERC20) {
         require(! isEth, "underlying: unsupported");
         return token;
     }

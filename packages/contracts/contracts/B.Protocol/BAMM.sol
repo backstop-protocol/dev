@@ -15,7 +15,7 @@ interface ICToken {
     function redeem(uint redeemTokens) external returns (uint);
     function balanceOf(address a) external view returns (uint);
     function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint);
-    function underlying() external view returns(address);
+    function underlying() external view returns(IERC20);
 }
 
 contract BAMM is TokenAdapter, PriceFormula, Ownable {
@@ -25,7 +25,8 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     uint public immutable lusdDecimals;
     IERC20[] public collaterals; // IMPORTANT - collateral != LUSD
     mapping(address => AggregatorV3Interface) public priceAggregators;
-    mapping(address => uint) public collateralDecimals;    
+    mapping(address => uint) public collateralDecimals;
+    mapping(address => bool) public cTokens;
     ICToken public immutable cBorrow;
 
     address payable public immutable feePool;
@@ -78,22 +79,31 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         emit ParamsSet(_A, _fee, _callerFee);
     }
 
-    function addCollateral(IERC20 token, AggregatorV3Interface feed) external onlyOwner {
+    function addCollateral(ICToken ctoken, AggregatorV3Interface feed) external onlyOwner {
+        IERC20 token = ctoken.underlying();
+
+        // validations
         require(token != LUSD, "addCollateral: LUSD cannot be collateral");
         require(feed != AggregatorV3Interface(0x0), "addCollateral: invalid feed");
-        require(priceAggregators[address(token)] == AggregatorV3Interface(0x0), "addCollateral: collateral listed");
+        require(! cTokens[address(ctoken)], "addCollateral: collateral listed");
+        require(priceAggregators[address(token)] == AggregatorV3Interface(0x0), "addCollateral: underlying already added");
 
+        // add the token
         collaterals.push(token);
         priceAggregators[address(token)] = feed;
         collateralDecimals[address(token)] = token.decimals();
+        cTokens[address(ctoken)] = true;        
     }
 
-    function removeCollateral(IERC20 token) external onlyOwner {
+    function removeCollateral(ICToken ctoken) external onlyOwner {
+        IERC20 token = ctoken.underlying();
+
         for(uint i = 0 ; i < collaterals.length ; i++) {
             if(collaterals[i] == token) {
                 collaterals[i] = collaterals[collaterals.length - 1];
                 collaterals.pop();
                 priceAggregators[address(token)] = AggregatorV3Interface(0x0);
+                cTokens[address(ctoken)] = false;
                 break;
             }
         }
@@ -280,15 +290,15 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         returns(bool)
     {
         if(cTokenBorrowed != cBorrow) return false;
-
-        AggregatorV3Interface feed = priceAggregators[cTokenCollateral.underlying()];
-        if((feed == AggregatorV3Interface(0)) && (cTokenCollateral != cTokenBorrowed)) return false;
+        if((! cTokens[address(cTokenCollateral)]) && (cTokenCollateral != cTokenBorrowed)) return false;
 
         return repayAmount <= LUSD.balanceOf(address(this));
     }
 
     // callable by anyone
     function liquidateBorrow(address borrower, uint amount, ICToken collateral) external returns (uint) {
+        require(cTokens[address(collateral)] || collateral == cBorrow, "liquidateBorrow: invalid collateral");
+
         IERC20 colToken = IERC20(collateral.underlying());
 
         uint tokenBalBefore = colToken.balanceOf(address(this));

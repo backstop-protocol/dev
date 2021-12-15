@@ -98,9 +98,9 @@ contract('BAMM', async accounts => {
                             feePool,
                             {from: bammOwner})
 
-      await bamm.addCollateral(token0.address, priceFeed0.address, {from: bammOwner})
-      await bamm.addCollateral(token1.address, priceFeed1.address, {from: bammOwner})
-      await bamm.addCollateral(token2.address, priceFeed2.address, {from: bammOwner})
+      await bamm.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner})
+      await bamm.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
+      await bamm.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
     })
 
     it("liquidateBorrow bamm", async () => {
