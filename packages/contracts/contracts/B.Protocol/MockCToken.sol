@@ -9,7 +9,7 @@ contract MockCToken {
     IERC20 token;
     bool isEth;    
     mapping(address => uint) public balanceOf;
-    uint tokenToCETHPrice;
+    uint price;
 
     constructor (IERC20 _token, bool _isETH) public {
         token = _token;
@@ -47,13 +47,13 @@ contract MockCToken {
         balanceOf[to] += amount;
     }
 
-    function setCETHPrice(uint price) public {
-        tokenToCETHPrice = price;
+    function setPrice(uint _price) public {
+        price = _price;
     }
 
     function liquidateBorrow(address borrower, uint amount, MockCToken collateral) external returns (uint) {
-        require(isEth == false, "cant liquidate ETH");
+        require(isEth == false, "can't liquidate ETH");
         token.transferFrom(msg.sender, address(this), amount);
-        collateral.transfer(borrower, msg.sender, amount*tokenToCETHPrice/1e18);
+        collateral.transfer(borrower, msg.sender, amount * price / 1e18);
     }
 }

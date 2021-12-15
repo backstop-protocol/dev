@@ -300,7 +300,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         if(collateral == cBorrow) deltaToken = amount;
 
         uint feeAmount = addBps(deltaToken, int(callerFee)).sub(deltaToken);
-        if(feeAmount > 0 ) colToken.transfer(borrower, feeAmount);
+        if(feeAmount > 0 ) colToken.transfer(msg.sender, feeAmount);
     }    
 }
 
