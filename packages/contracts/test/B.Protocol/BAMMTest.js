@@ -616,9 +616,71 @@ contract('BAMM', async accounts => {
       await assertRevert(bamm.addCollateral(newCToken.address, priceFeed0.address, {from: shmuel}), "Ownable: caller is not the owner")      
     })
 
-    // TODO:
-    // sad paths
-    // rari compound code
+    it('test get collateral value sad paths', async () => {
+      await priceFeed0.setPrice(dec(1, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
+
+      await token0.mintToken(bamm.address, dec(1,12))
+      await token1.mintToken(bamm.address, dec(1,13))
+      await token2.mintToken(bamm.address, dec(1,4))
+
+      assert((await bamm.getCollateralValue()).succ, "getCollateralValue should not fail")
+
+      // nullify price feed 1
+      await priceFeed1.setTimestamp(888) // now price expired
+
+      assert(! (await bamm.getCollateralValue()).succ, "getCollateralValue should fail")
+    })
+
+    it('test deposit when chainlink is down', async () => {
+      await priceFeed0.setPrice(dec(1, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
+
+      await token0.mintToken(bamm.address, dec(1,12))
+      await token1.mintToken(bamm.address, dec(1,13))
+      await token2.mintToken(bamm.address, dec(1,4))
+
+      await lusdToken.mintToken(A, toBN(dec(100000, 7)))
+      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
+
+      // nullify price feed 1
+      await priceFeed1.setTimestamp(888) // now price expired
+
+      await assertRevert(bamm.deposit(toBN(dec(6000, 7)), { from: A } ), "deposit: chainlink is down")
+    })
+
+    it('swap sad paths', async () => {
+      await priceFeed0.setPrice(dec(1, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
+
+      await token0.mintToken(bamm.address, dec(1,12))
+      await token1.mintToken(bamm.address, dec(1,13))
+      await token2.mintToken(bamm.address, dec(1,4))
+
+      await lusdToken.mintToken(A, toBN(dec(100000, 7)))
+      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
+
+      // call getSwapAmount and get non 0 value
+      let price = await bamm.getSwapAmount(dec(1, 7), token1.address)
+      assert(price.gt(toBN(0)), "expecting price > 0, and got " + price.toString())
+
+      // nullify price feed 1
+      await priceFeed1.setTimestamp(888) // now price expired
+
+      // call getSwapAmount and get non 0 value
+      price = await bamm.getSwapAmount(dec(1, 7), token1.address)
+      assert.equal(price.toString(), "0")
+
+      await assertRevert(bamm.swap(1, lusdToken.address, 0, ZERO_ADDRESS, { from: A } ), "swap: unsupported")
+    })
+
+    it('liquidateBorrow sad path', async () => {
+      const newCToken = await MockCToken.new(token0.address, false)
+      await assertRevert(bamm.liquidateBorrow(shmuel, 1, newCToken.address, { from: A } ), "liquidateBorrow: invalid collateral")
+    })
   })
 })
 

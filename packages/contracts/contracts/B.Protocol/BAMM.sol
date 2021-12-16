@@ -260,7 +260,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
 
     // get token in return to LUSD
     function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public returns(uint) {
-        require(returnToken != LUSD, "swap: hackers - curse upon you ipfs://QmNz8h7tccoCvUGKicZxbhTDEey8v8n2mv4MSVM1gryWk9");
+        require(returnToken != LUSD, "swap: unsupported");
 
         uint returnAmount = getSwapAmount(lusdAmount, returnToken);
 
