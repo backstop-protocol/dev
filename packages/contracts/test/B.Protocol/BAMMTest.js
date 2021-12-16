@@ -596,7 +596,25 @@ contract('BAMM', async accounts => {
       assert.equal((await bamm.priceAggregators(token2.address)).toString(), ZERO_ADDRESS)      
     })
 
+    it('test add collateral sad paths', async () => {
+      // try to add lusd collateral
+      await assertRevert(bamm.addCollateral(cLUSD.address, priceFeed0.address, {from: bammOwner}), "addCollateral: LUSD cannot be collateral")
 
+      // try to add a token with null price feed
+      const newToken = await MockToken.new(18)
+      const newCToken = await MockCToken.new(newToken.address, false)      
+      await assertRevert(bamm.addCollateral(newCToken.address, ZERO_ADDRESS, {from: bammOwner}), "addCollateral: invalid feed")
+
+      // try to add existng collateral
+      await assertRevert(bamm.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner}), "addCollateral: collateral listed")
+      
+      // try to add existng underlying
+      const newCToken2 = await MockCToken.new(token1.address, false)
+      await assertRevert(bamm.addCollateral(newCToken2.address, priceFeed1.address, {from: bammOwner}), "addCollateral: underlying already added")
+
+      // try to add as non owner
+      await assertRevert(bamm.addCollateral(newCToken.address, priceFeed0.address, {from: shmuel}), "Ownable: caller is not the owner")      
+    })
 
     // TODO:
     // sad paths
