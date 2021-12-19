@@ -10,7 +10,7 @@ contract TokenAdapter {
 
     string constant public name = "B.AMM";
     string constant public symbol = "BAMM";
-    uint constant public decimals = 18;
+    uint8 constant public decimals = 18;
 
     uint public totalSupply;
 
