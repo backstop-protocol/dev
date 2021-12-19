@@ -9,6 +9,7 @@ import "./../Dependencies/IERC20.sol";
 import "./../Dependencies/SafeMath.sol";
 import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
 interface ICToken {
@@ -18,7 +19,7 @@ interface ICToken {
     function underlying() external view returns(IERC20);
 }
 
-contract BAMM is TokenAdapter, PriceFormula, Ownable {
+contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
 
     IERC20 public immutable LUSD;
@@ -175,7 +176,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
 
-    function deposit(uint lusdAmount) external {        
+    function deposit(uint lusdAmount) external nonReentrant {        
         // update share
         uint lusdValue = LUSD.balanceOf(address(this));
         (bool succ, uint colValue) = getCollateralValue();
@@ -200,7 +201,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         emit UserDeposit(msg.sender, lusdAmount, newShare);        
     }
 
-    function withdraw(uint numShares) external {
+    function withdraw(uint numShares) external nonReentrant {
         uint supplyBefore = totalSupply; // this is to save gas
 
         uint lusdBal = LUSD.balanceOf(address(this));
@@ -259,7 +260,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
     // get token in return to LUSD
-    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public returns(uint) {
+    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public nonReentrant returns(uint) {
         require(returnToken != LUSD, "swap: unsupported");
 
         uint returnAmount = getSwapAmount(lusdAmount, returnToken);
@@ -296,7 +297,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
     // callable by anyone
-    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external returns (uint) {
+    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external nonReentrant returns (uint) {
         require(cTokens[address(collateral)] || collateral == cBorrow, "liquidateBorrow: invalid collateral");
 
         IERC20 colToken = IERC20(collateral.underlying());
