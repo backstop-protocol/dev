@@ -5,10 +5,12 @@ pragma solidity 0.6.11;
 import "./TokenAdapter.sol";
 import "./PriceFormula.sol";
 import "./../Interfaces/IPriceFeed.sol";
-import "./../Dependencies/IERC20.sol";
 import "./../Dependencies/SafeMath.sol";
 import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { SafeERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 
 interface ICToken {
@@ -18,8 +20,9 @@ interface ICToken {
     function underlying() external view returns(IERC20);
 }
 
-contract BAMM is TokenAdapter, PriceFormula, Ownable {
+contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
+    using SafeERC20 for IERC20;
 
     IERC20 public immutable LUSD;
     uint public immutable lusdDecimals;
@@ -55,15 +58,15 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         public
     {
         LUSD = IERC20(_LUSD);
-        lusdDecimals = IERC20(_LUSD).decimals();
+        lusdDecimals = ERC20(_LUSD).decimals();
         cBorrow = ICToken(_cBorrow);
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
 
-        IERC20(_LUSD).approve(address(_cBorrow), uint(-1));
+        IERC20(_LUSD).safeApprove(address(_cBorrow), uint(-1));
 
-        require(IERC20(_LUSD).decimals() <= 18, "unsupported decimals");
+        require(ERC20(_LUSD).decimals() <= 18, "unsupported decimals");
     }
 
     function setParams(uint _A, uint _fee, uint _callerFee) external onlyOwner {
@@ -91,7 +94,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         // add the token
         collaterals.push(token);
         priceAggregators[address(token)] = feed;
-        collateralDecimals[address(token)] = token.decimals();
+        collateralDecimals[address(token)] = ERC20(address(token)).decimals();
         cTokens[address(ctoken)] = true;        
     }
 
@@ -175,7 +178,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
 
-    function deposit(uint lusdAmount) external {        
+    function deposit(uint lusdAmount) external nonReentrant {        
         // update share
         uint lusdValue = LUSD.balanceOf(address(this));
         (bool succ, uint colValue) = getCollateralValue();
@@ -192,7 +195,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         if(totalSupply > 0) newShare = totalSupply.mul(lusdAmount) / totalValue;
 
         // deposit
-        require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "deposit: transferFrom failed");
+        LUSD.safeTransferFrom(msg.sender, address(this), lusdAmount);
 
         // update LP token
         mint(msg.sender, newShare);
@@ -200,7 +203,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         emit UserDeposit(msg.sender, lusdAmount, newShare);        
     }
 
-    function withdraw(uint numShares) external {
+    function withdraw(uint numShares) external nonReentrant {
         uint supplyBefore = totalSupply; // this is to save gas
 
         uint lusdBal = LUSD.balanceOf(address(this));
@@ -218,9 +221,9 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         burn(msg.sender, numShares);
 
         // send lusd and collateral leftovers
-        if(lusdAmount > 0) LUSD.transfer(msg.sender, lusdAmount);
+        if(lusdAmount > 0) LUSD.safeTransfer(msg.sender, lusdAmount);
         for(uint i = 0 ; i < collateralTypes.length ; i++) {
-            if(collateralAmounts[i] > 0 ) collateralTypes[i].transfer(msg.sender, collateralAmounts[i]); // re-entry is fine here (?)
+            if(collateralAmounts[i] > 0 ) collateralTypes[i].safeTransfer(msg.sender, collateralAmounts[i]);
         }
 
         emit UserWithdraw(msg.sender, lusdAmount, numShares);            
@@ -259,19 +262,19 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
     // get token in return to LUSD
-    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public returns(uint) {
+    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public nonReentrant returns(uint) {
         require(returnToken != LUSD, "swap: unsupported");
 
         uint returnAmount = getSwapAmount(lusdAmount, returnToken);
 
         require(returnAmount >= minReturn, "swap: low return");
 
-        require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "swap: transferFrom failed");
+        LUSD.safeTransferFrom(msg.sender, address(this), lusdAmount);
 
         uint feeAmount = addBps(lusdAmount, int(fee)).sub(lusdAmount);
-        if(feeAmount > 0) require(LUSD.transfer(feePool, feeAmount), "swap: transfer failed");
+        if(feeAmount > 0) LUSD.safeTransfer(feePool, feeAmount);
 
-        require(returnToken.transfer(dest, returnAmount), "swap: transfer token failed");
+        returnToken.safeTransfer(dest, returnAmount);
 
         emit RebalanceSwap(msg.sender, lusdAmount, returnToken, returnAmount, now);
 
@@ -296,7 +299,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
     }
 
     // callable by anyone
-    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external returns (uint) {
+    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external nonReentrant returns (uint) {
         require(cTokens[address(collateral)] || collateral == cBorrow, "liquidateBorrow: invalid collateral");
 
         IERC20 colToken = IERC20(collateral.underlying());
@@ -310,7 +313,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable {
         if(collateral == cBorrow) deltaToken = amount;
 
         uint feeAmount = addBps(deltaToken, int(callerFee)).sub(deltaToken);
-        if(feeAmount > 0 ) colToken.transfer(msg.sender, feeAmount);
+        if(feeAmount > 0 ) colToken.safeTransfer(msg.sender, feeAmount);
     }    
 }
 

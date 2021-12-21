@@ -684,6 +684,7 @@ contract('BAMM', async accounts => {
   })
 })
 
+// TODO - test infinite allowane
 
 function almostTheSame(n1, n2) {
   n1 = Number(web3.utils.fromWei(n1))

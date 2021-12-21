@@ -10,7 +10,7 @@ contract TokenAdapter {
 
     string constant public name = "B.AMM";
     string constant public symbol = "BAMM";
-    uint public decimals = 18;
+    uint8 constant public decimals = 18;
 
     uint public totalSupply;
 
@@ -39,7 +39,9 @@ contract TokenAdapter {
     // these standardized APIs for approval:
     function transferFrom(address from, address to, uint tokens) public returns (bool success) {
         balanceOf[from] = balanceOf[from].sub(tokens);
-        allowance[from][msg.sender] = allowance[from][msg.sender].sub(tokens);
+        if(allowance[from][msg.sender] != type(uint256).max) {
+            allowance[from][msg.sender] = allowance[from][msg.sender].sub(tokens);
+        }
         balanceOf[to] = balanceOf[to].add(tokens);
         emit Transfer(from, to, tokens);
         return true;
