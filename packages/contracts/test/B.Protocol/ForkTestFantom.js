@@ -40,8 +40,8 @@ contract('BAMM', async accounts => {
     shmuel, yaron, eitan
   ] = accounts;
 
-  const fvat = "0x1001009911e3FE1d5B45FF8Efea7732C33a6C012"
-  const whale = "0xE67Faab7a523C467E214C170abBfFbA8FDF57afc" // has eth and usdt
+  const fvat = "0xD0Bb8e4E4Dd5FDCD5D54f78263F5Ec8f33da4C95"
+  const whale = "0x2400BB4D7221bA530Daee061D5Afe219E9223Eae" // has eth and usdt
   const fish = "0x23cBF6d1b738423365c6930F075Ed6feEF7d14f3" // has cETH and usdt debt
 
   const [bountyAddress, lpRewardsAddress, multisig] = accounts.slice(997, 1000)
@@ -53,19 +53,18 @@ contract('BAMM', async accounts => {
   let bamm
   let lens
   let chainlink
-  let usdt
-  let cETH
-  let cUSDT
+  let usdc
+  let btc
+  let cBTC
+  let cUSDC
   let fakePrice
 
   let gasPriceInWei
 
-  const cETHAddress = "0xfCD8570AD81e6c77b8D252bEbEBA62ed980BD64D"
-  const cUSDTAddress = "0xE4e43864ea18d5E5211352a4B810383460aB7fcC"
-  const USDTAddress = "0x049d68029688eAbF473097a2fC38ef61633A3C7A"
-  const chainlinkAddress = "0xf4766552D15AE4d256Ad41B6cf2933482B0680dc"
-
-  const feePool = "0x1000000000000000000000000000000000000001"
+  const cBTCAddress = "0xa8236EaFBAF1C3D39396DE566cEEa6F320E3db00"
+  const BTCAddress = "0x321162Cd933E2Be498Cd2267a90534A804051b11"
+  const cUSDCAddress = "0x243E33aa7f6787154a8E59d3C27a66db3F8818ee"
+  const USDCAddress = "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75"
 
   //const assertRevert = th.assertRevert
 
@@ -87,15 +86,18 @@ contract('BAMM', async accounts => {
         params: [fish], 
       })
 
-      usdt = await MockToken.at(USDTAddress)
-      cETH = await CETH.at(cETHAddress)
-      cUSDT = await CErc20Interface.at(cUSDTAddress)      
+      usdc = await MockToken.at(USDCAddress)
+      btc = await MockToken.at(BTCAddress)
+      cBTC = await CErc20Interface.at(cBTCAddress)
+      cUSDC = await CErc20Interface.at(cUSDCAddress)      
 
       console.log("send eth to fish")
       await web3.eth.sendTransaction({from: whale, to: fish, value: toBN(dec(1, 18))})
 
       console.log("send ust to fish")
-      await usdt.transfer(fish, dec(1000,6), {from: whale, block: "latest"})
+      await usdc.transfer(fish, dec(1000,6), {from: whale, block: "latest"})
+
+      bamm = await BAMM.at("0xEDC7905a491fF335685e2F2F1552541705138A3D")
     })
 
     beforeEach(async () => {
@@ -107,21 +109,23 @@ contract('BAMM', async accounts => {
       const unitroller = await Unitroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
 
       console.log("enter market")
-      await unicomptroller.enterMarkets([cETH.address], {from: whale, block: "latest"})
-      console.log("deposit cETH")
-      await cETH.mint({from: whale, value: dec(6,18), block: "latest"})
-      console.log("whale balance:", (await usdt.balanceOf(whale)).toString())
-      await cUSDT.borrow(dec(5,6), {from: whale, block: "latest"})
-      console.log("whale balance:", (await usdt.balanceOf(whale)).toString())            
+      await unicomptroller.enterMarkets([cBTC.address], {from: whale, block: "latest"})
+      console.log("give wbtc allowance")
+      await btc.approve(cBTC.address, dec(1, 8), {from: whale, block: "latest"})
+      console.log("deposit cWBTC")
+      await cBTC.mint(dec(1,8), {from: whale, block: "latest"})
+      console.log("whale balance:", (await usdc.balanceOf(whale)).toString())
+      await cUSDC.borrow(dec(20000,6), {from: whale, block: "latest"})
+      console.log("whale balance:", (await usdc.balanceOf(whale)).toString())            
 
       console.log("deploying fake price")
-      fakePrice = await FakePrice.new(cETHAddress, "0x10010069DE6bD5408A6dEd075Cf6ae2498073c73", {from: fvat})
+      fakePrice = await FakePrice.new(cBTCAddress, "0x10010069DE6bD5408A6dEd075Cf6ae2498073c73", {from: fvat})
 
       console.log("setting new price oracle")
       await unicomptroller._setPriceOracle(fakePrice.address, {from: fvat, block: "latest"})
 
       console.log("setting new eth price")
-      await fakePrice.setCETHPrice(dec(1, 18), {from: fvat})
+      await fakePrice.setCETHPrice(dec(1000, 28), {from: fvat})
 
       console.log((await web3.eth.getBlockNumber()).toString())
 
@@ -138,53 +142,45 @@ contract('BAMM', async accounts => {
       await comptrollerImpl._become(unitroller.address, {from: fvat, block: "latest"})
       console.log("accept new implementation done")
 
-      console.log("deploying bamm")
-      bamm = await BAMM.new(chainlinkAddress,
-                            USDTAddress,
-                            cETHAddress,
-                            cUSDTAddress,
-                            400,
-                            feePool,
-                            {from: fvat, block: "latest"})
       console.log("bamm address", bamm.address)
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fvat, block: "latest"})
+      await unicomptroller._setBProtocol(cUSDCAddress, bamm.address, {from: fvat, block: "latest"})
       console.log("set b.protocol - done")
 
       console.log("give allowance to bamm")
-      await usdt.approve(bamm.address, dec(1000, 6), {from: whale, block: "latest"})
+      await usdc.approve(bamm.address, dec(1000, 6), {from: whale, block: "latest"})
 
-      console.log("whale balance:", (await usdt.balanceOf(whale)).toString())
+      console.log("whale balance:", (await usdc.balanceOf(whale)).toString())
 
       console.log("deposit usdt to bamm")
       await bamm.deposit(dec(1000, 6), {from: whale, block: "latest"})
       console.log("deposit done")
 
       console.log("liquidate")
-      const ethBalBefore = toBN(await web3.eth.getBalance(bamm.address))
-      const usdtBalBefore = await usdt.balanceOf(bamm.address)
+      const ethBalBefore = await btc.balanceOf(bamm.address)
+      const usdtBalBefore = await usdc.balanceOf(bamm.address)
 
-      console.log("eth balance before", (await web3.eth.getBalance(bamm.address)).toString())
-      console.log("ust balance before", (await usdt.balanceOf(bamm.address)).toString())
+      console.log("eth balance before", ethBalBefore.toString())
+      console.log("ust balance before", (await usdc.balanceOf(bamm.address)).toString())
 
-      await assertRevert(cUSDT.liquidateBorrow(whale, dec(1,6), cETHAddress, {from: fish, block: "latest"}), 'only B.Protocol can liquidate')
+      await assertRevert(cUSDC.liquidateBorrow(whale, dec(100,6), cBTCAddress, {from: fish, block: "latest"}), 'only B.Protocol can liquidate')
 
-      await bamm.liquidateBorrow(whale, dec(1,6), cETHAddress, {from: whale, block: "latest"})
+      await bamm.liquidateBorrow(whale, dec(100,6), cBTCAddress, {from: whale, block: "latest"})
 
-      console.log("eth balance after", (await web3.eth.getBalance(bamm.address)).toString())
-      console.log("ust balance before", (await usdt.balanceOf(bamm.address)).toString())
+      const ethBalAfter = await btc.balanceOf(bamm.address)
+      const usdtBalAfter = await usdc.balanceOf(bamm.address)
 
-      const ethBalAfter = toBN(await web3.eth.getBalance(bamm.address))
-      const usdtBalAfter = await usdt.balanceOf(bamm.address)
+      console.log("eth balance after", ethBalAfter.toString())
+      console.log("ust balance before", (await usdc.balanceOf(bamm.address)).toString())
 
-      assert.equal(usdtBalBefore.sub(usdtBalAfter).toString(), dec(1,6), "unexpect ust bal diff")
-      assert(toBN(ethBalAfter.sub(ethBalBefore)).gt(toBN(dec(108, 18 -2))))
+      assert.equal(usdtBalBefore.sub(usdtBalAfter).toString(), dec(100,6), "unexpect ust bal diff")
+      assert.equal(ethBalAfter.sub(ethBalBefore).toString(), (10691307 - 258), "unexpect ust btc diff")      
     })
 
     it("try to set bprotocol from non owner", async () => {
       const unicomptroller = await Comptroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
-      await assertRevert(unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fish}), "only admin can set B.Protocol")
+      await assertRevert(unicomptroller._setBProtocol(cUSDCAddress, bamm.address, {from: fish}), "only admin can set B.Protocol")
     })
 
     it("liquidate without b.protocol - b.protocol not set", async () => {
@@ -192,43 +188,43 @@ contract('BAMM', async accounts => {
       const unitroller = await Unitroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol(cUSDTAddress, "0x0000000000000000000000000000000000000000", {from: fvat, block: "latest"})
+      await unicomptroller._setBProtocol(cUSDCAddress, "0x0000000000000000000000000000000000000000", {from: fvat, block: "latest"})
       // set something but not for this ctoken
       await unicomptroller._setBProtocol(fvat, fvat, {from: fvat, block: "latest"})      
       console.log("set b.protocol - done")
 
-      console.log("whale balance:", (await usdt.balanceOf(whale)).toString())
+      console.log("whale balance:", (await usdc.balanceOf(whale)).toString())
 
       console.log("liquidate")
-      const usdtBalBefore = await usdt.balanceOf(fish)
-      console.log("ust balance before", (await usdt.balanceOf(fish)).toString())
-      await usdt.approve(cUSDT.address, dec(1,6), {from: fish, block: "latest"})      
-      console.log((await cUSDT.liquidateBorrow.call(whale, dec(1,6), cETHAddress, {from: fish, block: "latest"})).toString())
-      await cUSDT.liquidateBorrow(whale, dec(1,6), cETHAddress, {from: fish, block: "latest"})
-      const usdtBalAfter = await usdt.balanceOf(fish)      
-      console.log("ust balance after", (await usdt.balanceOf(fish)).toString())
+      const usdtBalBefore = await usdc.balanceOf(fish)
+      console.log("ust balance before", (await usdc.balanceOf(fish)).toString())
+      await usdc.approve(cUSDC.address, dec(1,6), {from: fish, block: "latest"})      
+      console.log((await cUSDC.liquidateBorrow.call(whale, dec(1,6), cBTCAddress, {from: fish, block: "latest"})).toString())
+      await cUSDC.liquidateBorrow(whale, dec(1,6), cBTCAddress, {from: fish, block: "latest"})
+      const usdtBalAfter = await usdc.balanceOf(fish)      
+      console.log("ust balance after", (await usdc.balanceOf(fish)).toString())
 
       assert.equal(usdtBalBefore.sub(usdtBalAfter).toString(), dec(1,6), "unexpect ust bal diff")
     })
 
-    it("liquidate without b.protocol - b.protocol can liquidate return false", async () => {
+    it.skip("liquidate without b.protocol - b.protocol can liquidate return false", async () => {
       const unicomptroller = await Comptroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
       const unitroller = await Unitroller.at("0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
 
       console.log("set b.protocol")
-      await unicomptroller._setBProtocol(cUSDTAddress, bamm.address, {from: fvat, block: "latest"})
-      assert.equal(await unicomptroller.bprotocol(cUSDTAddress), bamm.address, "unexpected b.protocol address")
+      await unicomptroller._setBProtocol(cUSDCAddress, bamm.address, {from: fvat, block: "latest"})
+      assert.equal(await unicomptroller.bprotocol(cUSDCAddress), bamm.address, "unexpected b.protocol address")
       console.log("set b.protocol - done")
 
       console.log("withdraw all bamm balance")
       await bamm.withdraw(await bamm.balanceOf(whale), {from: whale, block: "latest"})
 
-      assert(! await bamm.canLiquidate(cUSDT.address, cETHAddress, dec(1,6)), "expected can liquidate to return false")
+      assert(! await bamm.canLiquidate(cUSDC.address, cBTCAddress, dec(1,6)), "expected can liquidate to return false")
 
       console.log("liquidate")
-      const usdtBalBefore = await usdt.balanceOf(fish)
-      console.log("ust balance before", (await usdt.balanceOf(fish)).toString())
-      await usdt.approve(cUSDT.address, dec(1,6), {from: fish, block: "latest"})      
+      const usdcBalBefore = await usdt.balanceOf(fish)
+      console.log("ust balance before", (await usdc.balanceOf(fish)).toString())
+      await usdt.approve(cUSDC.address, dec(1,6), {from: fish, block: "latest"})      
       console.log((await cUSDT.liquidateBorrow.call(whale, dec(1,6), cETHAddress, {from: fish, block: "latest"})).toString())
       await cUSDT.liquidateBorrow(whale, dec(1,6), cETHAddress, {from: fish, block: "latest"})
       const usdtBalAfter = await usdt.balanceOf(fish)      
