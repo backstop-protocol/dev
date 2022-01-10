@@ -110,8 +110,6 @@ async function runOnLambda() {
     await writeStoredDataToS3()
 }
 
-
-
 module.exports = {
     run,
     runOnLambda
