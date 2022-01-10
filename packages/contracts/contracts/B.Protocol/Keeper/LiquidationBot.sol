@@ -23,56 +23,48 @@ interface BAMMLike {
 
 }
 
-interface ILiquidationBotHelper {
-    function getInfoFlat(address[] memory accounts, address comptroller, address[] memory bamms)
-        external view returns(address[] memory users, address[] memory bamm, uint[] memory repayAmount);
-}
-
 contract LiquidationBotHelper {
     struct Account {
         address account;
         address bamm;
         address ctoken;
         uint repayAmount;
+        bool underwater;
     }
 
-    function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm) public view returns(Account memory a) {
-        CToken cBorrow = CToken(bamm.cBorrow());
+    function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm, uint collateralNum) public view returns(Account memory a) {
+        for(uint i = 0; i < collateralNum ; i++) {
+            CToken cBorrow = CToken(bamm.cBorrow());
+            uint debt = cBorrow.borrowBalanceStored(account);
+            uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;                
+            uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
+            
+            a.account = account;
+            a.bamm = address(bamm);
 
-        for(uint i = 0; true ; i++) {
-            try bamm.collaterals(i) returns(address ctoken) {
-                CToken cETH = CToken(ctoken);
+            if(repayAmount > bammBalance) repayAmount = bammBalance;
+            if(repayAmount == 0) continue;
 
-                a.account = account;
-                a.bamm = address(bamm);
-
-                uint debt = cBorrow.borrowBalanceStored(account);
-
-                uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;
+            address ctoken = bamm.collaterals(i);
+            CToken cETH = CToken(ctoken);
                 
-                uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
-                if(repayAmount > bammBalance) repayAmount = bammBalance;
+            uint cETHBalance = cETH.balanceOf(account);
+            if(cETHBalance == 0) continue;
 
-                if(repayAmount == 0) continue;
-                (uint err, uint cETHAmount) = comptroller.liquidateCalculateSeizeTokens(address(cBorrow), address(cETH), repayAmount);
-                if(cETHAmount == 0 || err != 0) continue;
+            (uint err, uint cETHAmount) = comptroller.liquidateCalculateSeizeTokens(address(cBorrow), address(cETH), repayAmount);
+            if(cETHAmount == 0 || err != 0) continue;
 
-                uint cETHBalance = cETH.balanceOf(account);
-                if(cETHBalance < cETHAmount) {
-                    repayAmount = cETHBalance * repayAmount / cETHAmount;
-                }
-
-                a.repayAmount = repayAmount;
-                a.ctoken = ctoken;
-                break;
+            if(cETHBalance < cETHAmount) {
+                repayAmount = cETHBalance * repayAmount / cETHAmount;
             }
-            catch {
-                break;
-            }
+
+            a.repayAmount = repayAmount;
+            a.ctoken = ctoken;
+            break;
         }
     }
 
-    function getInfo(address[] memory accounts, address comptroller, address[] memory bamms) public view returns(Account[] memory unsafeAccounts) {
+    function getInfo(address[] memory accounts, address comptroller, address[] memory bamms, uint collateralNum) public view returns(Account[] memory unsafeAccounts) {
         if(accounts.length == 0) return unsafeAccounts;
 
         Account[] memory actions = new Account[](accounts.length);
@@ -83,12 +75,15 @@ contract LiquidationBotHelper {
             if(shortfall == 0 || err != 0) continue;
 
             Account memory a;
+
             for(uint j = 0 ; j < bamms.length ; j++) {
-                a = getAccountInfo(accounts[i], IComptroller(comptroller), BAMMLike(bamms[j]));
+                a = getAccountInfo(accounts[i], IComptroller(comptroller), BAMMLike(bamms[j]), collateralNum);
                 if(a.repayAmount > 0) {
                     actions[numUnsafe++] = a;
                     break;
                 }
+
+                a.underwater = true;                
             }
         }
 
@@ -96,5 +91,19 @@ contract LiquidationBotHelper {
         for(uint k = 0 ; k < numUnsafe ; k++) {
             unsafeAccounts[k] = actions[k];
         }
+    }
+
+    function getCollateralNum(BAMMLike bamm) public view returns(uint) {
+        uint i = 0;
+        while(true) {
+            try bamm.collaterals(i) returns (address /* ctoken */) {
+                i++;
+            }
+            catch {
+
+            }
+        }
+
+        return i;
     }
 }

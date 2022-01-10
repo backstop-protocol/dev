@@ -2,7 +2,6 @@ const Web3 = require("web3")
 const axios = require("axios")
 
 const secret = require("./secret.json")
-const bytecodes = require("./bytecodes.json")
 const abi = require("./abi.json")
 const web3 = new Web3(secret.nodeEndPoint)
 const {uploadJsonFile} = require("./s3-client")
@@ -11,29 +10,30 @@ const {uploadJsonFile} = require("./s3-client")
 const fileName = "liquidatorStoredData.json"
 let storedData = {
     accounts: [],
-    lastCoveredBlock: 1338448 + 100
+    lastCoveredBlock: 20683828 + 1
 }
 
-function handleCETHEvent(e) {
-    const to = e.returnValues.to
+function handleEvent(e) {
+    const to = e.returnValues.account
+    //if(to !== "0xdbbf063782B8BEbFD34D88E3043531bBC7a8D82b")
     if(! storedData.accounts.includes(to)) storedData.accounts.push(to)    
 }
 
 async function readAllUsers(startBlock, lastBlock) {
     const step = 100000
+    const unitroller = new web3.eth.Contract(abi.comptroller, "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2")
     console.log({lastBlock}) 
-    const cETH = new web3.eth.Contract(abi.cEthAbi, "0x8e15a22853A0A60a0FBB0d875055A8E66cff0235")
-    //console.log({cETH})
+
     for(let i = startBlock; i < lastBlock  ; i += step) {
         let start = i
         let end = i + step - 1
         if(end > lastBlock) end = lastBlock
 
-        const events = await cETH.getPastEvents("Transfer", {fromBlock: start, toBlock:end})
+        const events = await unitroller.getPastEvents("MarketEntered", {fromBlock: start, toBlock:end})
         console.log({i}, events.length, storedData.accounts.length)
 
         for(let j = 0 ; j < events.length ; j++) {
-            handleCETHEvent(events[j])
+            handleEvent(events[j])
         } 
     }
 
@@ -54,17 +54,17 @@ async function updateUsers() {
 }
 
 async function liquidateCheck(accountsForHelper) {
-    const helperContract = new web3.eth.Contract(abi.helperAbi, "0xE7D1406Cc09F6444973C798393F393f7E57e001f")
-    const bytecode = bytecodes.LiquidationBotHelper
+    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x217ceBC184F191DEbB226D8bf2B7b41F40f72d99")
 
     const comptroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2"
-    const bamms = ["0x04208f296039f482810B550ae0d68c3E1A5EB719", "0x24099000AE45558Ce4D049ad46DDaaf71429b168"]
+    const bamms = ["0xEDC7905a491fF335685e2F2F1552541705138A3D", "0x6d62d6Af9b82CDfA3A7d16601DDbCF8970634d22"]
 
-    const result = await helperContract.methods.getInfo(bytecode, accountsForHelper, comptroller, bamms).call({gas: 1000000000})
+    console.log("calling helper")
+    const result = await helperContract.methods.getInfo(accountsForHelper, comptroller, bamms, 5).call({gas: 40000000000000})
     console.log({result})
-    if(result.users.length > 0) {
+    if(result.length > 0) {
         console.log("found liquidation candidate")
-        await doLiquidate(result.users[0], result.bamm[0], result.repayAmount[0])
+        await doLiquidate(result[0].account, result[0].bamm, result[0].ctoken, result[0].repayAmount)
         console.log("done")
     }
 
@@ -86,7 +86,7 @@ async function writeStoredDataToS3() {
     await uploadJsonFile(JSON.stringify(storedData, null, 2), fileName);
 }
 
-async function doLiquidate(user, bammAddress, repayAmount) {
+async function doLiquidate(user, bammAddress, ctoken, repayAmount) {
     const privKey = secret.privateKey
     const account = web3.eth.accounts.privateKeyToAccount(privKey)
 
@@ -94,13 +94,15 @@ async function doLiquidate(user, bammAddress, repayAmount) {
     web3.eth.accounts.wallet.add(account)
     
     const bammContract = new web3.eth.Contract(abi.BAMMAbi, bammAddress)
-    await bammContract.methods.liquidateBorrow(user, repayAmount, "0x8e15a22853A0A60a0FBB0d875055A8E66cff0235").send({from: account.address, gas:3120853})
+    await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853})
 }
 
 async function run() {
     await updateUsers()
     for(let i = 0 ; i < storedData.accounts.length ; i += 50) {
-        await liquidateCheck(storedData.accounts.slice(i, i + 50))        
+        const slice = storedData.accounts.slice(i, i + 50)
+        //console.log({slice})
+        await liquidateCheck(slice)
     }
 }
 
@@ -114,3 +116,4 @@ module.exports = {
     run,
     runOnLambda
 }
+
