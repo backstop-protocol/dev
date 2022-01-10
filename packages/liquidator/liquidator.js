@@ -54,21 +54,21 @@ async function updateUsers() {
 }
 
 async function liquidateCheck(accountsForHelper) {
-    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x217ceBC184F191DEbB226D8bf2B7b41F40f72d99")
+    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x9a2756F50C18E87D3efdafdd8a47bf82DC0f469f")
 
     const comptroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2"
     const bamms = ["0xEDC7905a491fF335685e2F2F1552541705138A3D", "0x6d62d6Af9b82CDfA3A7d16601DDbCF8970634d22"]
 
-    console.log("calling helper")
-    const result = await helperContract.methods.getInfo(accountsForHelper, comptroller, bamms, 5).call({gas: 40000000000000})
-    console.log({result})
+    //console.log("calling helper")
+    //console.log({accountsForHelper})
+    const result = await helperContract.methods.getInfo(accountsForHelper, comptroller, bamms).call({gas: 40000000000000})
     if(result.length > 0) {
-        console.log("found liquidation candidate")
+        console.log("found liquidation candidate", result[0])
         await doLiquidate(result[0].account, result[0].bamm, result[0].ctoken, result[0].repayAmount)
         console.log("done")
     }
 
-    console.log("liquidateCheck end")    
+    //console.log("liquidateCheck end")    
 }
 
 async function readStoredDataFromS3 () {
@@ -93,7 +93,7 @@ async function doLiquidate(user, bammAddress, ctoken, repayAmount) {
     web3.eth.accounts.wallet.clear()
     web3.eth.accounts.wallet.add(account)
     
-    const bammContract = new web3.eth.Contract(abi.BAMMAbi, bammAddress)
+    const bammContract = new web3.eth.Contract(abi.BAMM, bammAddress)
     await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853})
 }
 
@@ -116,4 +116,3 @@ module.exports = {
     run,
     runOnLambda
 }
-

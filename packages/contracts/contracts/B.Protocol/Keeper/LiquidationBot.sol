@@ -8,6 +8,7 @@ interface IComptroller {
     function closeFactorMantissa() view external returns (uint);
     function liquidateCalculateSeizeTokens(address cTokenBorrowed, address cTokenCollateral, uint actualRepayAmount)
         external view returns (uint error , uint ctokenAmount);
+    function getAllMarkets() view external returns(address[] memory);
 }
 
 interface CToken {
@@ -19,7 +20,7 @@ interface CToken {
 interface BAMMLike {
     function LUSD() view external returns(uint);
     function cBorrow() view external returns(address);
-    function collaterals(uint i) view external returns(address);
+    function cTokens(address a) view external returns(bool);
 
 }
 
@@ -32,20 +33,23 @@ contract LiquidationBotHelper {
         bool underwater;
     }
 
-    function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm, uint collateralNum) public view returns(Account memory a) {
-        for(uint i = 0; i < collateralNum ; i++) {
-            CToken cBorrow = CToken(bamm.cBorrow());
-            uint debt = cBorrow.borrowBalanceStored(account);
-            uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;                
-            uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
+    function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm) public view returns(Account memory a) {
+        address[] memory ctokens = comptroller.getAllMarkets();
+
+        CToken cBorrow = CToken(bamm.cBorrow());
+        uint debt = cBorrow.borrowBalanceStored(account);
+        uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;                
+        uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
+        if(repayAmount > bammBalance) repayAmount = bammBalance;
+        if(repayAmount == 0) return a;
+
+        a.account = account;
+        a.bamm = address(bamm);
+
+        for(uint i = 0; i < ctokens.length ; i++) {
+            address ctoken = ctokens[i];
+            if(! bamm.cTokens(ctoken)) continue;            
             
-            a.account = account;
-            a.bamm = address(bamm);
-
-            if(repayAmount > bammBalance) repayAmount = bammBalance;
-            if(repayAmount == 0) continue;
-
-            address ctoken = bamm.collaterals(i);
             CToken cETH = CToken(ctoken);
                 
             uint cETHBalance = cETH.balanceOf(account);
@@ -62,9 +66,9 @@ contract LiquidationBotHelper {
             a.ctoken = ctoken;
             break;
         }
-    }
+    } 
 
-    function getInfo(address[] memory accounts, address comptroller, address[] memory bamms, uint collateralNum) public view returns(Account[] memory unsafeAccounts) {
+    function getInfo(address[] memory accounts, address comptroller, address[] memory bamms) public view returns(Account[] memory unsafeAccounts) {
         if(accounts.length == 0) return unsafeAccounts;
 
         Account[] memory actions = new Account[](accounts.length);
@@ -77,7 +81,7 @@ contract LiquidationBotHelper {
             Account memory a;
 
             for(uint j = 0 ; j < bamms.length ; j++) {
-                a = getAccountInfo(accounts[i], IComptroller(comptroller), BAMMLike(bamms[j]), collateralNum);
+                a = getAccountInfo(accounts[i], IComptroller(comptroller), BAMMLike(bamms[j]));
                 if(a.repayAmount > 0) {
                     actions[numUnsafe++] = a;
                     break;
@@ -91,19 +95,5 @@ contract LiquidationBotHelper {
         for(uint k = 0 ; k < numUnsafe ; k++) {
             unsafeAccounts[k] = actions[k];
         }
-    }
-
-    function getCollateralNum(BAMMLike bamm) public view returns(uint) {
-        uint i = 0;
-        while(true) {
-            try bamm.collaterals(i) returns (address /* ctoken */) {
-                i++;
-            }
-            catch {
-
-            }
-        }
-
-        return i;
     }
 }
