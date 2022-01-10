@@ -19,7 +19,8 @@ interface CToken {
 interface BAMMLike {
     function LUSD() view external returns(uint);
     function cBorrow() view external returns(address);
-    function cETH() view external returns(address);
+    function collaterals(uint i) view external returns(address);
+
 }
 
 interface ILiquidationBotHelper {
@@ -31,33 +32,44 @@ contract LiquidationBotHelper {
     struct Account {
         address account;
         address bamm;
+        address ctoken;
         uint repayAmount;
     }
 
     function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm) public view returns(Account memory a) {
         CToken cBorrow = CToken(bamm.cBorrow());
-        CToken cETH = CToken(bamm.cETH());
 
-        a.account = account;
-        a.bamm = address(bamm);
+        for(uint i = 0; true ; i++) {
+            try bamm.collaterals(i) returns(address ctoken) {
+                CToken cETH = CToken(ctoken);
 
-        uint debt = cBorrow.borrowBalanceStored(account);
+                a.account = account;
+                a.bamm = address(bamm);
 
-        uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;
-        
-        uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
-        if(repayAmount > bammBalance) repayAmount = bammBalance;
+                uint debt = cBorrow.borrowBalanceStored(account);
 
-        if(repayAmount == 0) return a;
-        (uint err, uint cETHAmount) = comptroller.liquidateCalculateSeizeTokens(address(cBorrow), address(cETH), repayAmount);
-        if(cETHAmount == 0 || err != 0) return a;
+                uint repayAmount = debt * comptroller.closeFactorMantissa() / 1e18;
+                
+                uint bammBalance = CToken(cBorrow.underlying()).balanceOf(address(bamm));
+                if(repayAmount > bammBalance) repayAmount = bammBalance;
 
-        uint cETHBalance = cETH.balanceOf(account);
-        if(cETHBalance < cETHAmount) {
-            repayAmount = cETHBalance * repayAmount / cETHAmount;
+                if(repayAmount == 0) continue;
+                (uint err, uint cETHAmount) = comptroller.liquidateCalculateSeizeTokens(address(cBorrow), address(cETH), repayAmount);
+                if(cETHAmount == 0 || err != 0) continue;
+
+                uint cETHBalance = cETH.balanceOf(account);
+                if(cETHBalance < cETHAmount) {
+                    repayAmount = cETHBalance * repayAmount / cETHAmount;
+                }
+
+                a.repayAmount = repayAmount;
+                a.ctoken = ctoken;
+                break;
+            }
+            catch {
+                break;
+            }
         }
-
-        a.repayAmount = repayAmount;
     }
 
     function getInfo(address[] memory accounts, address comptroller, address[] memory bamms) public view returns(Account[] memory unsafeAccounts) {
@@ -85,53 +97,4 @@ contract LiquidationBotHelper {
             unsafeAccounts[k] = actions[k];
         }
     }
-
-    function getInfoFlat(address[] memory accounts, address comptroller, address[] memory bamms) 
-        external returns(address[] memory users, address[] memory bamm, uint[] memory repayAmount)    
-    {
-        Account[] memory unsafeAccounts = getInfo(accounts, comptroller, bamms);
-
-        if(unsafeAccounts.length == 0) return (users, bamm, repayAmount);
-
-        users = new address[](unsafeAccounts.length);
-        bamm = new address[](unsafeAccounts.length);
-        repayAmount = new uint[](unsafeAccounts.length);
-
-        for(uint i = 0 ; i < unsafeAccounts.length ; i++) {
-            users[i] = unsafeAccounts[i].account;
-            bamm[i] = unsafeAccounts[i].bamm;
-            repayAmount[i] = unsafeAccounts[i].repayAmount;
-        }
-    }    
 }
-
-
-contract CheapTest {
-    function getInfoFlat(address[] memory accounts, address comptroller, address[] memory bamms) 
-        external returns(address[] memory users, address[] memory bamm, uint[] memory repayAmount)    
-    {
-        users = new address[](1);
-        bamm = new address[](1);
-        repayAmount = new uint[](1);
-
-        users[0] = address(this);
-        bamm[0] = address(this);
-        repayAmount[0] = 777;
-    }
-}
-
-
-contract CheapHelper {
-    function getInfo(bytes memory code, address[] calldata accounts, address comptroller, address[] calldata bamms)
-        external returns(address[] memory users, address[] memory bamm, uint[] memory repayAmount)
-    {
-        address proxy;
-        bytes32 salt = bytes32(0);
-        assembly {
-            proxy := create2(0, add(code, 0x20), mload(code), salt)
-        }
-
-        return ILiquidationBotHelper(proxy).getInfoFlat(accounts, comptroller, bamms);        
-    }
-}
-
