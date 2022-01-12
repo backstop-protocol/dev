@@ -12,6 +12,8 @@ const MockToken = artifacts.require("MockToken")
 const MockCToken = artifacts.require("MockCToken")
 const NonPayable = artifacts.require('NonPayable.sol')
 const BAMM = artifacts.require("BAMM.sol")
+const Admin = artifacts.require("Admin")
+const MockWithAdmin = artifacts.require("MockWithAdmin")
 const BLens = artifacts.require("BLens.sol")
 const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
 
@@ -681,6 +683,41 @@ contract('BAMM', async accounts => {
       const newCToken = await MockCToken.new(token0.address, false)
       await assertRevert(bamm.liquidateBorrow(shmuel, 1, newCToken.address, { from: A } ), "liquidateBorrow: invalid collateral")
     })
+
+    it('with admin', async () => {
+      const withAdmin = await MockWithAdmin.new()
+      await withAdmin.setAdmin(shmuel)
+      const adminContract = await Admin.new(withAdmin.address, bamm.address, {from: A})
+
+      await bamm.transferOwnership(adminContract.address, {from: bammOwner})
+
+      // test set params
+      await adminContract.setParams(25, 66, 77, {from: A})
+      assert.equal((await bamm.A()).toString(), "25")
+      assert.equal((await bamm.fee()).toString(), "66")
+      assert.equal((await bamm.callerFee()).toString(), "77")
+      
+      // test set params not from owner
+      await assertRevert(adminContract.setParams(25, 66, 77, {from: shmuel}), "Ownable: caller is not the owner")
+
+      // test new admin not from compoud admin
+      await assertRevert(adminContract.setBAMMPendingOwnership(B, {from: A}), "only market admin can change ownership")
+
+      // try to set new admin before pending was set
+      await assertRevert(adminContract.transferBAMMOwnership({from: A}), "pending owner is 0")
+
+      // test new admin from compoud admin
+      await adminContract.setBAMMPendingOwnership(B, {from: shmuel})      
+      assert.equal(await adminContract.pendingOwner(), B)
+
+      // try to set new admin before 14 days elapse
+      await assertRevert(adminContract.transferBAMMOwnership({from: A}), "too early")
+
+      // move two weeks into the future and change admin
+      await th.fastForwardTime(60 * 60 * 24 * 14 + 1, web3.currentProvider)
+      await adminContract.transferBAMMOwnership({from: A})
+      assert.equal(await bamm.owner(), B)
+    })    
   })
 })
 
