@@ -3,22 +3,26 @@
 pragma solidity 0.6.11;
 
 import "./../Dependencies/Ownable.sol";
-import "./BAMM.sol";
 
 interface WithAdmin {
     function admin() external view returns(address);
 }
 
+interface BAMMLikeInterface {
+    function setParams(uint _A, uint _fee, uint _callerFee) external;
+    function transferOwnership(address _newOwner) external;
+}
+
 contract Admin is Ownable {
     WithAdmin public immutable comptroller;
-    BAMM public immutable bamm;
+    BAMMLikeInterface public immutable bamm;
     
     address public pendingOwner;
     uint public ttl;
 
     event PendingOwnerAlert(address newOwner);
 
-    constructor(WithAdmin _comptroller, BAMM _bamm) public {
+    constructor(WithAdmin _comptroller, BAMMLikeInterface _bamm) public {
         comptroller = _comptroller;
         bamm = _bamm;
     }
