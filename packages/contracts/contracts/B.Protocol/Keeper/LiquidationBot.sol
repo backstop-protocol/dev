@@ -8,7 +8,7 @@ interface IComptroller {
     function closeFactorMantissa() view external returns (uint);
     function liquidateCalculateSeizeTokens(address cTokenBorrowed, address cTokenCollateral, uint actualRepayAmount)
         external view returns (uint error , uint ctokenAmount);
-    function getAllMarkets() view external returns(address[] memory);
+    function getAssetsIn(address account) view external returns(address[] memory);
 }
 
 interface CToken {
@@ -34,7 +34,7 @@ contract LiquidationBotHelper {
     }
 
     function getAccountInfo(address account, IComptroller comptroller, BAMMLike bamm) public view returns(Account memory a) {
-        address[] memory ctokens = comptroller.getAllMarkets();
+        address[] memory ctokens = comptroller.getAssetsIn(account);
 
         CToken cBorrow = CToken(bamm.cBorrow());
         uint debt = cBorrow.borrowBalanceStored(account);
@@ -45,10 +45,11 @@ contract LiquidationBotHelper {
 
         a.account = account;
         a.bamm = address(bamm);
+        a.repayAmount = 0;
 
         for(uint i = 0; i < ctokens.length ; i++) {
             address ctoken = ctokens[i];
-            if(! bamm.cTokens(ctoken)) continue;            
+            if((! bamm.cTokens(ctoken)) && (ctoken != address(cBorrow))) continue;            
             
             CToken cETH = CToken(ctoken);
                 
@@ -62,9 +63,11 @@ contract LiquidationBotHelper {
                 repayAmount = cETHBalance * repayAmount / cETHAmount;
             }
 
-            a.repayAmount = repayAmount;
-            a.ctoken = ctoken;
-            break;
+            // get the collateral with the highest deposits
+            if(repayAmount > a.repayAmount) {
+                a.repayAmount = repayAmount;
+                a.ctoken = ctoken;
+            }
         }
     } 
 

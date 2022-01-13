@@ -54,10 +54,14 @@ async function updateUsers() {
 }
 
 async function liquidateCheck(accountsForHelper) {
-    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x9a2756F50C18E87D3efdafdd8a47bf82DC0f469f")
+    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x45E305549636F29bAd41F4683fC94ec119A9eD24")
 
     const comptroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2"
-    const bamms = ["0xEDC7905a491fF335685e2F2F1552541705138A3D", "0x6d62d6Af9b82CDfA3A7d16601DDbCF8970634d22"]
+    const bamms1 = ["0xEDC7905a491fF335685e2F2F1552541705138A3D", "0x6d62d6Af9b82CDfA3A7d16601DDbCF8970634d22"]
+    const bamms2 = [].concat(bamms1).reverse()
+    const rand = (Math.floor(+new Date() / 1000)) % 2
+    console.log({rand})
+    const bamms = (rand == 0) ? bamms1 : bamms2
 
     //console.log("calling helper")
     //console.log({accountsForHelper})
@@ -116,3 +120,4 @@ module.exports = {
     run,
     runOnLambda
 }
+
