@@ -1,4 +1,4 @@
-service: aws-node-project
+service: hundred-fantom
 
 frameworkVersion: '2 || 3'
 
