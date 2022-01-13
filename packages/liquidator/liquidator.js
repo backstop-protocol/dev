@@ -54,7 +54,7 @@ async function updateUsers() {
 }
 
 async function liquidateCheck(accountsForHelper) {
-    const helperContract = new web3.eth.Contract(abi.helperAbi, "0x45E305549636F29bAd41F4683fC94ec119A9eD24")
+    const helperContract = new web3.eth.Contract(abi.helperAbi, "0xd134A5cE381d7db33596D83de74CBBfC34fbc7dC")
 
     const comptroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2"
     const bamms1 = ["0xEDC7905a491fF335685e2F2F1552541705138A3D", "0x6d62d6Af9b82CDfA3A7d16601DDbCF8970634d22"]
