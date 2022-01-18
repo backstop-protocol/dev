@@ -58,7 +58,11 @@ async function liquidateCheck(accountsForHelper) {
     const bytecode = bytecodes.LiquidationBotHelper
 
     const comptroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2"
-    const bamms = ["0x04208f296039f482810B550ae0d68c3E1A5EB719", "0x24099000AE45558Ce4D049ad46DDaaf71429b168"]
+    const bamms1 = ["0x04208f296039f482810B550ae0d68c3E1A5EB719", "0x24099000AE45558Ce4D049ad46DDaaf71429b168"]
+    const bamms2 = [].concat(bamms1).reverse()
+    const rand = (Math.floor(+new Date() / 1000)) % 2
+    const bamms = (rand == 0) ? bamms1 : bamms2
+    console.log({bamms})
 
     const result = await helperContract.methods.getInfo(bytecode, accountsForHelper, comptroller, bamms).call({gas: 1000000000})
     console.log({result})
