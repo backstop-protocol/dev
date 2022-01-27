@@ -152,19 +152,22 @@ contract('BAMM', async accounts => {
       const expectedVal = await keeperRebate.getReturnedSwapAmount(dec(1,18))
       console.log(expectedVal.ethAmount.toString(), expectedVal.lusdRebate.toString())
       assert(expectedVal.lusdRebate.toString() !== "0")
+
+      const maxRebate = toBN(expectedVal.lusdRebate.toString()).div(toBN("2"))
+      console.log("max rebate", maxRebate.toString())
       
       console.log("give allowance to rebate")
       await lusdToken.approve(keeperRebate.address, dec(1000000,18), {from: alice})
       console.log("do swap and hope for the best")
       const emptyAddress = "0x5f98805a4e8bE255a32880FDEC7f6728c6568bA1"
-      await keeperRebate.swapWithRebate(dec(1,18), 1, emptyAddress, {from: alice})
+      await keeperRebate.swapWithRebate(dec(1,18), 1, maxRebate, emptyAddress, {from: alice})
 
       console.log("check emptyAddress balance")
       const lusdBalance = await lusdToken.balanceOf(emptyAddress)
       console.log("empty lusd balance", lusdBalance.toString())
       const ethBalance = await web3.eth.getBalance(emptyAddress)
 
-      assert.equal(lusdBalance.toString(), expectedVal.lusdRebate.toString())
+      assert.equal(lusdBalance.toString(), maxRebate.toString())
       assert.equal(ethBalance.toString(), expectedVal.ethAmount.toString())      
     })
 
@@ -180,31 +183,14 @@ contract('BAMM', async accounts => {
 
       console.log("swap from non keeper")
       await keeperRebate.listKeeper(alice, false, {from: bob})
-      await assertRevert(keeperRebate.swapWithRebate(dec(1,18), 1, alice, {from: alice}), "swapWithRebate: !keeper")      
+      await assertRevert(keeperRebate.swapWithRebate(dec(1,18), 1, 1, alice, {from: alice}), "swapWithRebate: !keeper")      
     })    
 
     it("transfer ownership on fee pool", async () => {
       await keeperRebate.transferFeePoolOwnership(carol, {from: deployer})
       const newOwner = await feePoolContract.owner()
       assert.equal(newOwner.toString(), carol.toString())
-    })    
-
-    // tests:
-    // 1. complex lqty staking + share V
-    // 2. share test with ether V
-    // 3. basic share with liquidation (withdraw after liquidation) V
-    // 4. price that exceeds max discount V
-    // 5. price that exceeds balance V
-    // 5.5 test fees and return V
-    // 5.6 test swap  v
-    // 6.1 test fetch price V
-    // 6. set params V
-    // 7. test with front end v
-    // 8. formula V
-    // 9. lp token - transfer sad test
-    // 11. pickle V
-    // 10. cleanups - compilation warnings. cropjoin - revoke changes and maybe make internal. V
-    // 12 - linter. events
+    })
   })
 })
 

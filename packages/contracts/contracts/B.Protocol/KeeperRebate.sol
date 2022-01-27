@@ -37,7 +37,7 @@ contract KeeperRebate is Ownable {
         (ethAmount, lusdRebate) = bamm.getSwapEthAmount(lusdQty);
     }
 
-    function swapWithRebate(uint lusdAmount, uint minEthReturn, address payable dest)
+    function swapWithRebate(uint lusdAmount, uint minEthReturn, uint maxLusdRebate, address payable dest)
         public
         returns(uint ethAmount, uint lusdRebate)
     {
@@ -48,6 +48,9 @@ contract KeeperRebate is Ownable {
         // if lusd amount is 0 it will revert, but this is fine
         require(feeBps * lusdAmount / lusdAmount == feeBps, "swapWithRebate: overflow");
         lusdRebate = feeBps * lusdAmount / 10000;
+
+        // adjust rebate to max fee
+        if(lusdRebate > maxLusdRebate) lusdRebate = maxLusdRebate;
 
         ethAmount = bamm.swap(lusdAmount, minEthReturn, dest);
 
