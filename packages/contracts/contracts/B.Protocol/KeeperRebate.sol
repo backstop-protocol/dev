@@ -3,6 +3,7 @@
 pragma solidity 0.6.11;
 
 import "./BAMM.sol";
+import "@openzeppelin/contracts/utils/EnumerableSet.sol";
 
 interface FeePoolVaultLike {
     function op(address target, bytes calldata data, uint value) external;
@@ -11,11 +12,14 @@ interface FeePoolVaultLike {
 
 
 contract KeeperRebate is Ownable {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     address immutable public feePool;
     BAMM immutable public bamm;
     IERC20 immutable public lusd;
-    mapping(address => bool) keepers;
+    EnumerableSet.AddressSet keepers;
     address public keeperLister;
+    
 
     event Swap(address indexed keeper, uint lusdInAmount, uint ethRetAmount, uint lusdRebate);
     event NewLister(address lister);
@@ -37,7 +41,7 @@ contract KeeperRebate is Ownable {
         public
         returns(uint ethAmount, uint lusdRebate)
     {
-        require(keepers[msg.sender], "swapWithRebate: !keeper");
+        require(keepers.contains(msg.sender), "swapWithRebate: !keeper");
         lusd.transferFrom(msg.sender, address(this), lusdAmount);
 
         uint feeBps = bamm.fee();
@@ -68,7 +72,10 @@ contract KeeperRebate is Ownable {
     
     function listKeeper(address keeper, bool list) public {
         require(msg.sender == keeperLister, "listKeeper: !lister");
-        keepers[keeper] = list;
+
+        if(list) require(keepers.add(keeper), "listKeeper: keepers.add failed");
+        else require(keepers.remove(keeper), "listKeeper: keepers.remove failed");
+
         KeeperListing(keeper, list);
     }
 }

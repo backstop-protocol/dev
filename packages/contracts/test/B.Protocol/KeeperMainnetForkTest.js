@@ -169,9 +169,6 @@ contract('BAMM', async accounts => {
     })
 
     it("sad paths", async () => {
-      console.log("swap from non keeper")
-      await assertRevert(keeperRebate.swapWithRebate(dec(1,18), 1, bob, {from: bob}), "swapWithRebate: !keeper")
-
       console.log("list keeper from non owner")      
       await assertRevert(keeperRebate.listKeeper(carol, true, {from: deployer}), "listKeeper: !lister")
 
@@ -180,6 +177,10 @@ contract('BAMM', async accounts => {
 
       console.log("transfer fee pool ownership from non owner")      
       await assertRevert(keeperRebate.transferFeePoolOwnership(carol, {from: alice}), "Ownable: caller is not the owner")      
+
+      console.log("swap from non keeper")
+      await keeperRebate.listKeeper(alice, false, {from: bob})
+      await assertRevert(keeperRebate.swapWithRebate(dec(1,18), 1, alice, {from: alice}), "swapWithRebate: !keeper")      
     })    
 
     it("transfer ownership on fee pool", async () => {
