@@ -69,6 +69,8 @@ contract('BAMM', async accounts => {
   // whale of both eth and lusd
   const optimisimBridge = "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1"
 
+  const ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
+
 
   const getOpenTroveLUSDAmount = async (totalDebt) => th.getOpenTroveLUSDAmount(contracts, totalDebt)
   const openTrove = async (params) => th.openTrove(contracts, params)
@@ -140,27 +142,40 @@ contract('BAMM', async accounts => {
     // increases recorded LUSD at Stability Pool
     it("test get price", async () => {
       const realRetVal = await realBamm.getSwapEthAmount(dec(1,18))
-      const expectedVal = await keeperRebate.getReturnedSwapAmount(dec(1,18))
+      const expectedVal = await keeperRebate.getReturnedSwapAmount(lusdToken.address, dec(1,18), ETH)
 
-      assert.equal(realRetVal[0].toString(), expectedVal[0].toString())
-      assert.equal(realRetVal[1].toString(), expectedVal[1].toString())      
+      assert.equal(realRetVal[0].toString(), expectedVal.outAmount.toString())
+      assert.equal(realRetVal[1].toString(), expectedVal.rebateAmount.toString())
+      assert.equal(expectedVal.rebateToken.toString(), lusdToken.address.toString())
       console.log("done")
     })
 
+    it("test get token", async () => {
+      const outTokens = await keeperRebate.getTokens([lusdToken.address])
+
+      assert.equal(outTokens.length, 1)
+      assert.equal(outTokens[0].outTokens.length, 1)
+      assert.equal(outTokens[0].rebateTokens.length, 1)      
+
+      assert.equal(outTokens[0].outTokens[0], ETH)
+      assert.equal(outTokens[0].rebateTokens[0], lusdToken.address)
+    })    
+
     it("test swap", async () => {
       console.log("check epected value")
-      const expectedVal = await keeperRebate.getReturnedSwapAmount(dec(1,18))
-      console.log(expectedVal.ethAmount.toString(), expectedVal.lusdRebate.toString())
-      assert(expectedVal.lusdRebate.toString() !== "0")
+      const expectedVal = await keeperRebate.getReturnedSwapAmount(lusdToken.address, dec(1,18), ETH)
+      console.log(expectedVal.outAmount.toString(), expectedVal.rebateAmount.toString())
+      assert(expectedVal.rebateAmount.toString() !== "0")
 
-      const maxRebate = toBN(expectedVal.lusdRebate.toString()).div(toBN("2"))
+      const maxRebate = toBN(expectedVal.rebateAmount.toString()).div(toBN("2"))
       console.log("max rebate", maxRebate.toString())
       
       console.log("give allowance to rebate")
       await lusdToken.approve(keeperRebate.address, dec(1000000,18), {from: alice})
       console.log("do swap and hope for the best")
       const emptyAddress = "0x5f98805a4e8bE255a32880FDEC7f6728c6568bA1"
-      await keeperRebate.swapWithRebate(dec(1,18), 1, maxRebate, emptyAddress, {from: alice})
+      //await keeperRebate.swapWithRebate(dec(1,18), 1, maxRebate, emptyAddress, {from: alice})
+      await keeperRebate.swap(lusdToken.address, dec(1,18), ETH, 1, maxRebate, emptyAddress, {from: alice})      
 
       console.log("check emptyAddress balance")
       const lusdBalance = await lusdToken.balanceOf(emptyAddress)
@@ -168,7 +183,7 @@ contract('BAMM', async accounts => {
       const ethBalance = await web3.eth.getBalance(emptyAddress)
 
       assert.equal(lusdBalance.toString(), maxRebate.toString())
-      assert.equal(ethBalance.toString(), expectedVal.ethAmount.toString())      
+      assert.equal(ethBalance.toString(), expectedVal.outAmount.toString())      
     })
 
     it("sad paths", async () => {
@@ -183,7 +198,7 @@ contract('BAMM', async accounts => {
 
       console.log("swap from non keeper")
       await keeperRebate.listKeeper(alice, false, {from: bob})
-      await assertRevert(keeperRebate.swapWithRebate(dec(1,18), 1, 1, alice, {from: alice}), "swapWithRebate: !keeper")      
+      await assertRevert(keeperRebate.swap(lusdToken.address, dec(1,18), ETH, 1, 1, alice, {from: alice}), "swapWithRebate: !keeper")      
     })    
 
     it("transfer ownership on fee pool", async () => {

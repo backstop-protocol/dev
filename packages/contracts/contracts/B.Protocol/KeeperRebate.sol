@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.6.11;
+pragma experimental ABIEncoderV2;
 
 import "./BAMM.sol";
 import "@openzeppelin/contracts/utils/EnumerableSet.sol";
@@ -10,18 +11,22 @@ interface FeePoolVaultLike {
     function transferOwnership(address newOwner) external;
 }
 
-
 contract KeeperRebate is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     address immutable public feePool;
     BAMM immutable public bamm;
     IERC20 immutable public lusd;
+    IERC20 constant public ETH = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
     EnumerableSet.AddressSet keepers;
     address public keeperLister;
-    
 
-    event Swap(address indexed keeper, uint lusdInAmount, uint ethRetAmount, uint lusdRebate);
+    struct OutTokens {
+        IERC20[] outTokens;
+        IERC20[] rebateTokens;
+    }    
+
+    event SwapSummary(address indexed keeper, IERC20 tokenIn, uint inAmount, IERC20 tokenOut, uint outAmount, uint rebateAmount);    
     event NewLister(address lister);
     event KeeperListing(address keeper, bool list);
 
@@ -33,35 +38,41 @@ contract KeeperRebate is Ownable {
         IERC20(_bamm.LUSD()).approve(address(_bamm), uint(-1));
     }
 
-    function getReturnedSwapAmount(uint lusdQty) public view returns(uint ethAmount, uint lusdRebate) {
-        (ethAmount, lusdRebate) = bamm.getSwapEthAmount(lusdQty);
-    }
-
-    function swapWithRebate(uint lusdAmount, uint minEthReturn, uint maxLusdRebate, address payable dest)
+    function getReturnedSwapAmount(IERC20 tokenIn, uint inAmount, IERC20 tokenOut)
         public
-        returns(uint ethAmount, uint lusdRebate)
+        view
+        returns(uint outAmount, IERC20 rebateToken, uint rebateAmount) {
+        if(tokenIn == lusd && tokenOut == ETH) {
+            (outAmount, rebateAmount) = bamm.getSwapEthAmount(inAmount);
+        }
+
+        rebateToken = lusd;
+    }    
+
+    function swap(IERC20 tokenIn, uint inAmount, IERC20 tokenOut, uint minOutAmount, uint maxRebate, address payable dest)
+        public
+        payable
+        returns(uint outAmount, uint rebateAmount)
     {
-        require(keepers.contains(msg.sender), "swapWithRebate: !keeper");
-        lusd.transferFrom(msg.sender, address(this), lusdAmount);
+        require(tokenIn == lusd, "swap: invalid tokenIn");
+        require(tokenOut == ETH, "swap: invalid tokenOut");
 
-        uint feeBps = bamm.fee();
-        // if lusd amount is 0 it will revert, but this is fine
-        require(feeBps * lusdAmount / lusdAmount == feeBps, "swapWithRebate: overflow");
-        lusdRebate = feeBps * lusdAmount / 10000;
+        (outAmount, rebateAmount) = swapWithRebate(inAmount, minOutAmount, maxRebate, dest);
 
-        // adjust rebate to max fee
-        if(lusdRebate > maxLusdRebate) lusdRebate = maxLusdRebate;
-
-        ethAmount = bamm.swap(lusdAmount, minEthReturn, dest);
-
-        rebate(dest, lusdRebate);
-
-        emit Swap(msg.sender, lusdAmount, ethAmount, lusdRebate);
+        emit SwapSummary(msg.sender, tokenIn, inAmount, tokenOut, outAmount, rebateAmount);
     }
 
-    function rebate(address payable dest, uint amount) internal {
-        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", dest, amount);
-        FeePoolVaultLike(feePool).op(address(lusd), data, 0);
+    function getTokens(IERC20[] memory tokensIn) public view returns(OutTokens[] memory outTokens) {
+        outTokens = new OutTokens[](tokensIn.length);
+        for(uint i = 0 ; i < tokensIn.length ; i++) {
+            if(tokensIn[i] == lusd) {
+                outTokens[i].outTokens = new IERC20[](1);
+                outTokens[i].rebateTokens = new IERC20[](1);
+
+                outTokens[i].outTokens[0] = ETH;
+                outTokens[i].rebateTokens[0] = lusd;
+            }
+        }
     }
 
     function transferFeePoolOwnership(address newOwner) public onlyOwner {
@@ -80,5 +91,30 @@ contract KeeperRebate is Ownable {
         else require(keepers.remove(keeper), "listKeeper: keepers.remove failed");
 
         KeeperListing(keeper, list);
+    }
+
+    function swapWithRebate(uint lusdAmount, uint minEthReturn, uint maxLusdRebate, address payable dest)
+        internal
+        returns(uint ethAmount, uint lusdRebate)
+    {
+        require(keepers.contains(msg.sender), "swapWithRebate: !keeper");
+        lusd.transferFrom(msg.sender, address(this), lusdAmount);
+
+        uint feeBps = bamm.fee();
+        // if lusd amount is 0 it will revert, but this is fine
+        require(feeBps * lusdAmount / lusdAmount == feeBps, "swapWithRebate: overflow");
+        lusdRebate = feeBps * lusdAmount / 10000;
+
+        // adjust rebate to max fee
+        if(lusdRebate > maxLusdRebate) lusdRebate = maxLusdRebate;
+
+        ethAmount = bamm.swap(lusdAmount, minEthReturn, dest);
+
+        rebate(dest, lusdRebate);
+    }
+
+    function rebate(address payable dest, uint amount) internal {
+        bytes memory data = abi.encodeWithSignature("transfer(address,uint256)", dest, amount);
+        FeePoolVaultLike(feePool).op(address(lusd), data, 0);
     }
 }
