@@ -151,7 +151,7 @@ contract('BAMM', async accounts => {
     })
 
     it("test get token", async () => {
-      const outTokens = await keeperRebate.getTokens([lusdToken.address])
+      const outTokens = await keeperRebate.getTokens()
 
       assert.equal(outTokens.length, 1)
       assert.equal(outTokens[0].outTokens.length, 1)
@@ -159,6 +159,8 @@ contract('BAMM', async accounts => {
 
       assert.equal(outTokens[0].outTokens[0], ETH)
       assert.equal(outTokens[0].rebateTokens[0], lusdToken.address)
+
+      assert.equal(outTokens[0].inToken, lusdToken.address)
     })    
 
     it("test swap", async () => {

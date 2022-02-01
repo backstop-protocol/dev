@@ -21,7 +21,8 @@ contract KeeperRebate is Ownable {
     EnumerableSet.AddressSet keepers;
     address public keeperLister;
 
-    struct OutTokens {
+    struct TokensData {
+        IERC20 inToken;
         IERC20[] outTokens;
         IERC20[] rebateTokens;
     }    
@@ -62,17 +63,15 @@ contract KeeperRebate is Ownable {
         emit SwapSummary(msg.sender, tokenIn, inAmount, tokenOut, outAmount, rebateAmount);
     }
 
-    function getTokens(IERC20[] memory tokensIn) public view returns(OutTokens[] memory outTokens) {
-        outTokens = new OutTokens[](tokensIn.length);
-        for(uint i = 0 ; i < tokensIn.length ; i++) {
-            if(tokensIn[i] == lusd) {
-                outTokens[i].outTokens = new IERC20[](1);
-                outTokens[i].rebateTokens = new IERC20[](1);
+    function getTokens() public view returns(TokensData[] memory tokens) {
+        tokens = new TokensData[](1);
+        tokens[0].inToken = lusd;
 
-                outTokens[i].outTokens[0] = ETH;
-                outTokens[i].rebateTokens[0] = lusd;
-            }
-        }
+        tokens[0].outTokens = new IERC20[](1);
+        tokens[0].rebateTokens = new IERC20[](1);
+
+        tokens[0].outTokens[0] = ETH;
+        tokens[0].rebateTokens[0] = lusd;
     }
 
     function transferFeePoolOwnership(address newOwner) public onlyOwner {
