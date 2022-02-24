@@ -1,4 +1,4 @@
-service: aws-node-project
+service: hundred-arbitrum
 
 frameworkVersion: '2 || 3'
 
