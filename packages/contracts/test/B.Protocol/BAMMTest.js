@@ -1,4 +1,4 @@
-const { assert } = require("hardhat")
+const { assert, artifacts } = require("hardhat")
 const deploymentHelper = require("./../../utils/deploymentHelpers.js")
 const testHelpers = require("./../../utils/testHelpers.js")
 const th = testHelpers.TestHelper
@@ -16,6 +16,7 @@ const Admin = artifacts.require("Admin")
 const MockWithAdmin = artifacts.require("MockWithAdmin")
 const BLens = artifacts.require("BLens.sol")
 const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
+const FlashswapStub = artifacts.require("FlashswapStub.sol")
 
 const ZERO = toBN('0')
 const ZERO_ADDRESS = th.ZERO_ADDRESS
@@ -64,6 +65,8 @@ contract('BAMM', async accounts => {
   let cToken1
   let cToken2
   let cETH
+
+  let flashswapStub
 
   const feePool = "0x1000000000000000000000000000000000000001"
 
@@ -114,6 +117,7 @@ contract('BAMM', async accounts => {
       await bammETH.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
       await bammETH.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
 
+      flashswapStub = await FlashswapStub.new()
     })
 
     it("liquidateBorrow bamm", async () => {
@@ -494,6 +498,44 @@ contract('BAMM', async accounts => {
       // check fees
       assert.equal((await cLUSD.balanceOf(await bamm.feePool())).toString(), fees)
     })
+
+    it('test flash swap', async () => {
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))      
+
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
+
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
+
+      // send ETH to bamm, mimics liquidations. total of 420 usd
+      await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
+
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
+
+      // with fee
+      await bamm.setParams(20, 100, 0, {from: bammOwner})
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+
+      await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
+      const dest = flashswapStub.address
+      
+      await bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: whale})
+
+      // check stub
+      assert.equal((await flashswapStub.initiator()).toString(), whale.toString())
+      assert.equal((await flashswapStub.lusdAmount()).toString(), dec(105, 8).toString())
+      assert.equal((await flashswapStub.returnAmount()).toString(), priceWithFee.toString())
+      assert.equal((await flashswapStub.data()).toString(), "0x1234")      
+
+      // check eth balance
+      assert.equal((await cToken0.balanceOf(dest)).toString(), priceWithFee.toString())
+    })    
 
     it('test set params happy path', async () => {
       // --- SETUP ---
