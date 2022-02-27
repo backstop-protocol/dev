@@ -49,6 +49,7 @@ contract('BAMM', async accounts => {
 
   let lusdToken
   let bamm
+  let bammETH
   let lens
   let chainlink
 
@@ -61,7 +62,8 @@ contract('BAMM', async accounts => {
 
   let cToken0
   let cToken1
-  let cToken2  
+  let cToken2
+  let cETH
 
   const feePool = "0x1000000000000000000000000000000000000001"
 
@@ -90,6 +92,8 @@ contract('BAMM', async accounts => {
       cToken0 = await MockCToken.new(token0.address, false)
       cToken1 = await MockCToken.new(token1.address, false)
       cToken2 = await MockCToken.new(token2.address, false)
+
+      cETH = await MockCToken.new(ZERO_ADDRESS, true)
       
       priceFeed0 = await ChainlinkTestnet.new()
       priceFeed1 = await ChainlinkTestnet.new()
@@ -104,6 +108,12 @@ contract('BAMM', async accounts => {
       await bamm.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner})
       await bamm.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
       await bamm.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
+
+      bammETH = await BAMM.new(cETH.address, true, 400, feePool, {from: bammOwner})
+      await bammETH.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner})
+      await bammETH.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
+      await bammETH.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
+
     })
 
     it("liquidateBorrow bamm", async () => {
@@ -132,6 +142,33 @@ contract('BAMM', async accounts => {
       const callerToken0Delta = callerToken0BalanceAfter.sub(callerToken0BalanceBefore)
       assert.equal(expectedCallerFee.toString(), callerToken0Delta.toString())
     })
+
+    it("liquidateBorrow bammETH", async () => {
+      await bammETH.setParams(20, 100, 50, {from: bammOwner})
+      const liquidationAmount = toBN(dec(1000, 8))
+      const collateralAmount = toBN(dec(3000, 8))
+      await cETH.depositEther({from: shmuel, value: liquidationAmount})
+      await cETH.approve(bammETH.address, liquidationAmount, {from: shmuel})
+      await bammETH.deposit(liquidationAmount, {from: shmuel})
+
+      await mintCToken(token0, cToken0, yaron, collateralAmount)
+
+      const callerToken0BalanceBefore = toBN(await cToken0.balanceOf(shmuel))
+
+      const expectedCallerFee = collateralAmount.div(toBN(200)) // 0.5%
+      await cETH.setPrice(toBN(dec(3, 18)))
+
+      await bammETH.liquidateBorrow(yaron, liquidationAmount, cToken0.address, {from: shmuel})
+      
+      const callerToken0BalanceAfter = toBN(await cToken0.balanceOf(shmuel))
+      const bammToken0Balance = await cToken0.balanceOf(bammETH.address)
+      const expectdToken0Balance = collateralAmount.sub(expectedCallerFee)
+      assert.equal(expectdToken0Balance.toString(), bammToken0Balance.toString())
+      const bammLusdBalance = await cLUSD.balanceOf(bammETH.address)
+      assert.equal(bammLusdBalance.toString(), "0")
+      const callerToken0Delta = callerToken0BalanceAfter.sub(callerToken0BalanceBefore)
+      assert.equal(expectedCallerFee.toString(), callerToken0Delta.toString())
+    })    
 
     it("liquidateLUSD with LUSD", async () => {
       await bamm.setParams(20, 100, 50, {from: bammOwner})
@@ -697,7 +734,10 @@ contract('BAMM', async accounts => {
   })
 })
 
-// TODO - test infinite allowane
+// TODO - test:
+// 1. ETH debt liquidation. V
+// 2. flash callback
+// 3. reentry test
 
 function almostTheSame(n1, n2) {
   n1 = Number(web3.utils.fromWei(n1))
