@@ -25,6 +25,8 @@ contract TokenAdapter2 {
  
     // Transfer the balance from owner's account to another account
     function transfer(address to, uint tokens) public returns (bool success) {
+        require(tokens <= balanceOf[msg.sender], "transfer: insufficient balance");
+
         balanceOf[msg.sender] = balanceOf[msg.sender].sub(tokens);
         balanceOf[to] = balanceOf[to].add(tokens);
         emit Transfer(msg.sender, to, tokens);
@@ -38,6 +40,9 @@ contract TokenAdapter2 {
     // deliberately authorized the sender of the message via some mechanism; we propose
     // these standardized APIs for approval:
     function transferFrom(address from, address to, uint tokens) public returns (bool success) {
+        require(tokens <= balanceOf[from], "transferFrom: insufficient balance");
+        require(allowance[from][msg.sender] >= tokens, "transferFrom: insufficient allowance");
+
         balanceOf[from] = balanceOf[from].sub(tokens);
         allowance[from][msg.sender] = allowance[from][msg.sender].sub(tokens);
         balanceOf[to] = balanceOf[to].add(tokens);

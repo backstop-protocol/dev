@@ -81,6 +81,7 @@ contract('BAMM', async accounts => {
       // deploy BAMM
       lusdToken = await MockToken.new(7)
       cLUSD = await MockCToken.new(lusdToken.address, false)
+      await cLUSD.setExchangeRate(dec(1,18))
 
       token0 = await MockToken.new(12)
       token1 = await MockToken.new(13)
@@ -94,8 +95,8 @@ contract('BAMM', async accounts => {
       priceFeed1 = await ChainlinkTestnet.new()
       priceFeed2 = await ChainlinkTestnet.new()
 
-      bamm = await BAMM.new(lusdToken.address,
-                            cLUSD.address,
+      bamm = await BAMM.new(cLUSD.address,
+                            false,
                             400,
                             feePool,
                             {from: bammOwner})
@@ -107,28 +108,26 @@ contract('BAMM', async accounts => {
 
     it("liquidateBorrow bamm", async () => {
       await bamm.setParams(20, 100, 50, {from: bammOwner})
-      const liquidationAmount = toBN(dec(1000, 7))
-      const collateralAmount = toBN(dec(3000, 12))
-      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      const liquidationAmount = toBN(dec(1000, 8))
+      const collateralAmount = toBN(dec(3000, 8))
+      await mintCLUSD(shmuel, liquidationAmount)
+      await cLUSD.approve(bamm.address, liquidationAmount, {from: shmuel})
       await bamm.deposit(liquidationAmount, {from: shmuel})
 
-      await token0.mintToken(yaron, collateralAmount)
-      await token0.approve(cToken0.address, collateralAmount, {from: yaron})
-      await cToken0.depositToken(collateralAmount, {from: yaron})
+      await mintCToken(token0, cToken0, yaron, collateralAmount)
 
-      const callerToken0BalanceBefore = toBN(await token0.balanceOf(shmuel))
+      const callerToken0BalanceBefore = toBN(await cToken0.balanceOf(shmuel))
 
       const expectedCallerFee = collateralAmount.div(toBN(200)) // 0.5%
-      await cLUSD.setPrice(toBN(dec(3, 18 + 12 - 7)))
+      await cLUSD.setPrice(toBN(dec(3, 18)))
 
       await bamm.liquidateBorrow(yaron, liquidationAmount, cToken0.address, {from: shmuel})
       
-      const callerToken0BalanceAfter = toBN(await token0.balanceOf(shmuel))
-      const bammToken0Balance = await token0.balanceOf(bamm.address)
+      const callerToken0BalanceAfter = toBN(await cToken0.balanceOf(shmuel))
+      const bammToken0Balance = await cToken0.balanceOf(bamm.address)
       const expectdToken0Balance = collateralAmount.sub(expectedCallerFee)
       assert.equal(expectdToken0Balance.toString(), bammToken0Balance.toString())
-      const bammLusdBalance = await lusdToken.balanceOf(bamm.address)
+      const bammLusdBalance = await cLUSD.balanceOf(bamm.address)
       assert.equal(bammLusdBalance.toString(), "0")
       const callerToken0Delta = callerToken0BalanceAfter.sub(callerToken0BalanceBefore)
       assert.equal(expectedCallerFee.toString(), callerToken0Delta.toString())
@@ -136,36 +135,34 @@ contract('BAMM', async accounts => {
 
     it("liquidateLUSD with LUSD", async () => {
       await bamm.setParams(20, 100, 50, {from: bammOwner})
-      const liquidationAmount = toBN(dec(1000, 7))
-      const collateralAmount = toBN(dec(2000, 7))
-      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      const liquidationAmount = toBN(dec(1000, 8))
+      const collateralAmount = toBN(dec(1100, 8))
+      await mintCLUSD(shmuel, liquidationAmount)
+      await cLUSD.approve(bamm.address, liquidationAmount, {from: shmuel})
       await bamm.deposit(liquidationAmount, {from: shmuel})
 
-      await lusdToken.mintToken(yaron, collateralAmount)
-      await lusdToken.approve(cLUSD.address, collateralAmount, {from: yaron})
-      await cLUSD.depositToken(collateralAmount, {from: yaron})
+      await mintCLUSD(yaron, collateralAmount)
 
-      // in LUSD <> LUSD the fee is from the 
-      const expectedCallerFee = liquidationAmount.div(toBN(200)) // 0.5%
-      await cLUSD.setPrice(toBN(dec(2, 18)))
+      await cLUSD.setPrice(toBN(dec(11, 17))) // 0.1 liquidation penelty
+      // in LUSD <> LUSD the fee is from the liquidation penelty
+      const expectedCallerFee = liquidationAmount.div(toBN(2000)) // 0.5% from 1/10
 
-      const shmuelLusdBefore = await lusdToken.balanceOf(shmuel)
+      const shmuelLusdBefore = await cLUSD.balanceOf(shmuel)
       await bamm.liquidateBorrow(yaron, liquidationAmount, cLUSD.address, {from: shmuel})
-      const shmuelLusdAfter = await lusdToken.balanceOf(shmuel)      
+      const shmuelLusdAfter = await cLUSD.balanceOf(shmuel)      
 
       assert.equal(expectedCallerFee.toString(), shmuelLusdAfter.sub(shmuelLusdBefore).toString())
 
-      const bammLusdBalance = await lusdToken.balanceOf(bamm.address)
+      const bammLusdBalance = await cLUSD.balanceOf(bamm.address)
       const expectdLusdBalance = collateralAmount.sub(expectedCallerFee)
       assert.equal(expectdLusdBalance.toString(), bammLusdBalance.toString())
     })    
     
     it("canLiquidate", async ()=> {
-      const liquidationAmount = toBN(dec(1000, 7))
+      const liquidationAmount = toBN(dec(1000, 8))
 
-      await lusdToken.mintToken(shmuel, liquidationAmount, {from: shmuel})
-      await lusdToken.approve(bamm.address, liquidationAmount, {from: shmuel})
+      await mintCLUSD(shmuel, liquidationAmount)
+      await cLUSD.approve(bamm.address, liquidationAmount, {from: shmuel})
       await bamm.deposit(liquidationAmount, {from: shmuel})
 
       // valid liquidations
@@ -189,20 +186,46 @@ contract('BAMM', async accounts => {
       // borrow = collateral
       canLiquidate = await bamm.canLiquidate(cLUSD.address, cLUSD.address, liquidationAmount)
       assert.equal(canLiquidate, true)
+
+      // cash exceeded
+      await cLUSD.borrow(1, {from: alice})
+
+      canLiquidate = await bamm.canLiquidate(cLUSD.address, cToken2.address, liquidationAmount)
+      assert.equal(canLiquidate, false)      
     })
 
     // --- provideToSP() ---
     // increases recorded LUSD at Stability Pool
+
+    async function mintCLUSD(user, amount) {
+      await lusdToken.mintToken(user, amount, {from: user})
+      lusdToken.approve(cLUSD.address, amount, {from: user})
+      await cLUSD.depositToken(amount, {from: user})
+    }
+
+    async function mintCToken(underlying, cToken, user, amount) {
+      await underlying.mintToken(alice, amount, {from: alice})
+      underlying.approve(cToken.address, amount, {from: alice})
+
+      const balanceBefore = await cToken.balanceOf(alice)      
+      await cToken.depositToken(amount, {from: alice})
+      const balanceAfter = await cToken.balanceOf(alice)
+      
+      const delta = toBN(balanceAfter).sub(toBN(balanceBefore))
+
+      await cToken.transfer(user, delta, {from: alice})
+    }    
+
     it("deposit(): increases the Stability Pool LUSD balance", async () => {
       // --- SETUP --- Give Alice a least 200
-      await lusdToken.mintToken(alice, toBN(200), {from: alice})
+      await mintCLUSD(alice, toBN(200))
 
       // --- TEST ---
-      await lusdToken.approve(bamm.address, toBN(200), { from: alice })
+      await cLUSD.approve(bamm.address, toBN(200), { from: alice })
       await bamm.deposit(toBN(200), { from: alice })
 
       // check LUSD balances after
-      const bamm_LUSD_After = await lusdToken.balanceOf(bamm.address)
+      const bamm_LUSD_After = await cLUSD.balanceOf(bamm.address)
       assert.equal(bamm_LUSD_After, 200)
     })
 
@@ -210,12 +233,12 @@ contract('BAMM', async accounts => {
     // increases recorded LUSD at Stability Pool
     it("deposit(): two users deposit, check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
-      await lusdToken.mintToken(alice, toBN(200), {from: alice})
-      await lusdToken.mintToken(whale, toBN(200), {from: alice})      
+      await mintCLUSD(alice, toBN(200))
+      await mintCLUSD(whale, toBN(200))
 
       // --- TEST ---
-      await lusdToken.approve(bamm.address, toBN(200), { from: alice })
-      await lusdToken.approve(bamm.address, toBN(200), { from: whale })      
+      await cLUSD.approve(bamm.address, toBN(200), { from: alice })
+      await cLUSD.approve(bamm.address, toBN(200), { from: whale })      
       await bamm.deposit(toBN(200), { from: alice })
       await bamm.deposit(toBN(200), { from: whale })      
 
@@ -230,12 +253,12 @@ contract('BAMM', async accounts => {
     // increases recorded LUSD at Stability Pool
     it("deposit(): two users deposit, one withdraw. check their share", async () => {
       // --- SETUP --- Give Alice and whale at least 200
-      await lusdToken.mintToken(alice, toBN(200), {from: alice})
-      await lusdToken.mintToken(whale, toBN(200), {from: alice})           
+      await mintCLUSD(alice, toBN(200))
+      await mintCLUSD(whale, toBN(200))      
 
       // --- TEST ---
-      await lusdToken.approve(bamm.address, toBN(200), { from: alice })
-      await lusdToken.approve(bamm.address, toBN(100), { from: whale })      
+      await cLUSD.approve(bamm.address, toBN(200), { from: alice })
+      await cLUSD.approve(bamm.address, toBN(100), { from: whale })      
       await bamm.deposit(toBN(200), { from: alice })
       await bamm.deposit(toBN(100), { from: whale })      
 
@@ -245,33 +268,32 @@ contract('BAMM', async accounts => {
 
       assert.equal(whaleShare.mul(toBN(2)).toString(), aliceShare.toString())
 
-      const whaleBalanceBefore = await lusdToken.balanceOf(whale)
+      const whaleBalanceBefore = await cLUSD.balanceOf(whale)
       const shareToWithdraw = whaleShare.div(toBN(2));
       await bamm.withdraw(shareToWithdraw, { from: whale });
 
       const newWhaleShare = await bamm.balanceOf(whale)
       assert.equal(newWhaleShare.mul(toBN(2)).toString(), whaleShare.toString())
 
-      const whaleBalanceAfter = await lusdToken.balanceOf(whale)
+      const whaleBalanceAfter = await cLUSD.balanceOf(whale)
       assert.equal(whaleBalanceAfter.sub(whaleBalanceBefore).toString(), 50)      
     })
 
     it('test share with collateral', async () => {
       // --- SETUP ---
-
-      await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: A})
-      await lusdToken.mintToken(B, toBN(dec(100000, 7)), {from: B})
+      await mintCLUSD(whale, toBN(dec(100000, 8)))
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(B, toBN(dec(100000, 8)))              
             
-      const whaleLUSD = await lusdToken.balanceOf(whale)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: whale })
-      await lusdToken.approve(bamm.address, toBN(dec(6000, 7)), { from: A })
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
+      const whaleLUSD = await cLUSD.balanceOf(whale)
+      await cLUSD.approve(bamm.address, whaleLUSD, { from: whale })
+      await cLUSD.approve(bamm.address, toBN(dec(6000, 8)), { from: A })
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
 
       // send $6k collateral to bamm, mimics liquidations
-      await token0.mintToken(bamm.address, toBN(dec(1000, 12))) // $3k
-      await token1.mintToken(bamm.address, toBN(dec(200, 13))) // $1k
-      await token2.mintToken(bamm.address, toBN(dec(500, 4))) // $2k
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1000, 8))) // $3k
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(200, 8))) // $1k
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(500, 8))) // $2k
 
       // price set so that total collateral is $6k
       await priceFeed0.setPrice(dec(3, 18));
@@ -279,100 +301,106 @@ contract('BAMM', async accounts => {
       await priceFeed2.setPrice(dec(4, 18));
 
 
-      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
       const collateralValue = await bamm.getCollateralValue()
-      assert.equal((collateralValue.value).toString(), toBN(dec(6000, 7)).toString(), "unexpected collateral value")
+      assert.equal((collateralValue.value).toString(), toBN(dec(6000, 8)).toString(), "unexpected collateral value")
 
-      const totalUsd = toBN(dec(6000 * 2, 7))
+      const totalUsd = toBN(dec(6000 * 2, 8))
 
-      await lusdToken.approve(bamm.address, totalUsd, { from: B })       
+      await cLUSD.approve(bamm.address, totalUsd, { from: B })       
       await bamm.deposit(totalUsd, { from: B } )      
 
       assert.equal((await bamm.balanceOf(A)).toString(), (await bamm.balanceOf(B)).toString())
 
-      const token0BalBefore = toBN(await token0.balanceOf(A))
-      const token1BalBefore = toBN(await token1.balanceOf(A))
-      const token2BalBefore = toBN(await token2.balanceOf(A))
+      const token0BalBefore = toBN(await cToken0.balanceOf(A))
+      const token1BalBefore = toBN(await cToken1.balanceOf(A))
+      const token2BalBefore = toBN(await cToken2.balanceOf(A))
 
-      const LUSDBefore = await lusdToken.balanceOf(A)
+      const LUSDBefore = await cLUSD.balanceOf(A)
 
       await bamm.withdraw(await bamm.balanceOf(A), {from: A})
 
-      const LUSDAfter = await lusdToken.balanceOf(A)
+      const LUSDAfter = await cLUSD.balanceOf(A)
 
-      const token0BalAfter = toBN(await token0.balanceOf(A))
-      const token1BalAfter = toBN(await token1.balanceOf(A))
-      const token2BalAfter = toBN(await token2.balanceOf(A))
+      const token0BalAfter = toBN(await cToken0.balanceOf(A))
+      const token1BalAfter = toBN(await cToken1.balanceOf(A))
+      const token2BalAfter = toBN(await cToken2.balanceOf(A))
 
 
       // LUSD
-      assert.equal(toBN(dec((6000 + 6000 * 2) / 2, 7)).toString(), LUSDAfter.sub(LUSDBefore).toString())
+      assert.equal(toBN(dec((6000 + 6000 * 2) / 2, 8)).toString(), LUSDAfter.sub(LUSDBefore).toString())
 
       // token 0-2
-      assert.equal(toBN(dec(500, 12)).toString(), token0BalAfter.sub(token0BalBefore).toString())
-      assert.equal(toBN(dec(100, 13)).toString(), token1BalAfter.sub(token1BalBefore).toString())
-      assert.equal(toBN(dec(250, 4)).toString(), token2BalAfter.sub(token2BalBefore).toString())
+      assert.equal(toBN(dec(500, 8)).toString(), token0BalAfter.sub(token0BalBefore).toString())
+      assert.equal(toBN(dec(100, 8)).toString(), token1BalAfter.sub(token1BalBefore).toString())
+      assert.equal(toBN(dec(250, 8)).toString(), token2BalAfter.sub(token2BalBefore).toString())
     })
 
     it('price exceed max dicount and/or collateral balance', async () => {
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
 
       // price drops: defaulter's Troves fall below MCR, whale doesn't
       await priceFeed0.setPrice(dec(105, 18));
 
       // 4k liquidations
-      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
 
       // send ETH to bamm, mimics liquidations
       const ethGains = web3.utils.toBN("39799999999999")
-      await token0.mintToken(bamm.address, ethGains)
+      await mintCToken(token0, cToken0, bamm.address, ethGains) 
 
       // without fee
       await bamm.setParams(20, 0, 0, {from: bammOwner})
-      const price = await bamm.getSwapAmount(dec(105, 7), token0.address)
-      assert.equal(price.toString(), dec(104, 12 - 2).toString())
+      const price = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+      assert.equal(price.toString(), dec(104, 6).toString())
 
       // with fee - should be the same, as fee is on the lusd
       await bamm.setParams(20, 100, 0, {from: bammOwner})
-      const priceWithFee = await bamm.getSwapAmount(dec(105, 7), token0.address)
-      assert.equal(price.toString(), dec(104, 12 - 2).toString())
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+      assert.equal(price.toString(), dec(104, 6).toString())
 
       // without fee
       await bamm.setParams(20, 0, 0, {from: bammOwner})
-      const priceDepleted = await bamm.getSwapAmount(dec(1050000000000000, 7), token0.address)
+      const priceDepleted = await bamm.getSwapAmount(dec(1050000000000000, 8), cToken0.address)
       assert.equal(priceDepleted.toString(), ethGains.toString())      
 
       // with fee - should be the same
       await bamm.setParams(20, 100, 0, {from: bammOwner})
-      const priceDepletedWithFee = await bamm.getSwapAmount(dec(1050000000000000, 7), token0.address)
+      const priceDepletedWithFee = await bamm.getSwapAmount(dec(1050000000000000, 8), cToken0.address)
       assert.equal(priceDepletedWithFee.toString(), ethGains.toString())
     })
 
     it('test getSwapAmount', async () => {
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})      
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
 
       await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
       await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});      
 
-      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
 
       // send ETH to bamm, mimics liquidations. total of 420 usd
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
+      
+      /*
       await token0.mintToken(bamm.address, toBN(dec(2, 12)))
       await token1.mintToken(bamm.address, toBN(dec(1, 13)))
       await token2.mintToken(bamm.address, toBN(dec(1, 4)))      
-      
-      const lusdQty = dec(105, 7)
-      const expectedReturn = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(toBN(dec(2 * 420, 7))), 200)
+      */
+
+      const lusdQty = dec(105, 8)
+      const expectedReturn = await bamm.getReturn(lusdQty, dec(6000, 8), toBN(dec(6000, 8)).add(toBN(dec(2 * 420, 8))), 200)
 
       // without fee
       await bamm.setParams(200, 0, 0, {from: bammOwner})
-      const priceWithoutFee = await bamm.getSwapAmount(lusdQty, token0.address)
-      assert.equal(priceWithoutFee.toString(), expectedReturn.mul(toBN(dec(1,12 - 7))).div(toBN(105)).toString())
+      const priceWithoutFee = await bamm.getSwapAmount(lusdQty, cToken0.address)
+      assert.equal(priceWithoutFee.toString(), expectedReturn.mul(toBN(dec(1,0))).div(toBN(105)).toString())
     })    
 
     it('test fetch price', async () => {
@@ -380,140 +408,92 @@ contract('BAMM', async accounts => {
       await priceFeed1.setPrice(dec(333, 18));
       await priceFeed2.setPrice(dec(111, 18));      
       
-      assert.equal((await bamm.fetchPrice(token0.address)).toString(), dec(666, 18 - (12 - 7)))
-      assert.equal((await bamm.fetchPrice(token1.address)).toString(), dec(333, 18 - (13 - 7)))
-      assert.equal((await bamm.fetchPrice(token2.address)).toString(), dec(111, 18 - ( 4 - 7)))
+      assert.equal((await bamm.fetchPrice(cToken0.address)).toString(), dec(666, 18))
+      assert.equal((await bamm.fetchPrice(cToken1.address)).toString(), dec(333, 18))
+      assert.equal((await bamm.fetchPrice(cToken2.address)).toString(), dec(111, 18))
       
-      await priceFeed2.setDecimals(2)
-      await priceFeed2.setPrice(dec(111, 2));
-      assert.equal((await bamm.fetchPrice(token2.address)).toString(), dec(111, 18 - ( 4 - 7)))      
-
-
       await priceFeed0.setTimestamp(888)
-      assert.equal((await bamm.fetchPrice(token0.address)).toString(), "0")      
+      assert.equal((await bamm.fetchPrice(cToken0.address)).toString(), "0")      
     })
 
-    it('test swap 12 decimals', async () => {
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
-      await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
+    it('test swap', async () => {
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))      
 
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: whale })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
 
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
-      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
 
       // send ETH to bamm, mimics liquidations. total of 420 usd
       await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
       await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
-      
-      await token0.mintToken(bamm.address, toBN(dec(2, 12)))
-      await token1.mintToken(bamm.address, toBN(dec(1, 13)))
-      await token2.mintToken(bamm.address, toBN(dec(1, 4)))
+
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
 
       // with fee
       await bamm.setParams(20, 100, 0, {from: bammOwner})
-      const priceWithFee = await bamm.getSwapAmount(dec(105, 7), token0.address)
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
 
-      await lusdToken.approve(bamm.address, dec(105,7), {from: whale})
+      await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
       const dest = "0xdEADBEEF00AA81bBCF694bC5c05A397F5E5658D5"
 
-      await assertRevert(bamm.swap(dec(105,7), token0.address, priceWithFee.add(toBN(1)), dest, {from: whale}), 'swap: low return')      
-      await bamm.swap(dec(105,7), token0.address, priceWithFee, dest, {from: whale})
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee.add(toBN(1)), dest, "0x", {from: whale}), 'swap: low return')      
+      await bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x", {from: whale})
 
-      const fees = toBN(dec(105,7)).div(toBN(100))
+      const fees = toBN(dec(105,8)).div(toBN(100))
 
       // check lusd balance
-      assert.equal(toBN(dec(6105, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).add(fees).toString())
+      assert.equal(toBN(dec(6105, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).add(fees).toString())
 
       // check eth balance
-      assert.equal((await token0.balanceOf(dest)).toString(), priceWithFee.toString())
-      assert.equal("1005498373333", priceWithFee.toString())
+      assert.equal((await cToken0.balanceOf(dest)).toString(), priceWithFee.toString())
+      assert.equal("100549837", priceWithFee.toString())
 
       // check fees
-      assert.equal((await lusdToken.balanceOf(await bamm.feePool())).toString(), fees)
+      assert.equal((await cLUSD.balanceOf(await bamm.feePool())).toString(), fees)
     })
-
-    it('test swap 4 decimals', async () => {
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
-      await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
-
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: whale })
-
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
-      assert.equal(toBN(dec(6000, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).toString())
-
-      // send ETH to bamm, mimics liquidations. total of 420 usd
-      await priceFeed0.setPrice(dec(20, 18), {from: bammOwner});
-      await priceFeed1.setPrice(dec(85, 18), {from: bammOwner});
-      await priceFeed2.setPrice(dec(105, 18), {from: bammOwner});
-      
-      await token0.mintToken(bamm.address, toBN(dec(1, 12)))
-      await token1.mintToken(bamm.address, toBN(dec(1, 13)))
-      await token2.mintToken(bamm.address, toBN(dec(3, 4)))
-
-      // with fee
-      await bamm.setParams(20, 100, 0, {from: bammOwner})
-      const priceWithFee = await bamm.getSwapAmount(dec(105, 7), token2.address)
-
-      await lusdToken.approve(bamm.address, dec(105,7), {from: whale})
-      const dest = "0xdEADBEEF00AA81bBCF694bC5c05A397F5E5658D5"
-
-      await assertRevert(bamm.swap(dec(105,7), token2.address, priceWithFee.add(toBN(1)), dest, {from: whale}), 'swap: low return')      
-      await bamm.swap(dec(105,7), token2.address, priceWithFee, dest, {from: whale})
-
-      const fees = toBN(dec(105,7)).div(toBN(100))
-
-      // check lusd balance
-      assert.equal(toBN(dec(6105, 7)).toString(), (await lusdToken.balanceOf(bamm.address)).add(fees).toString())
-
-      // check eth balance
-      assert.equal((await token2.balanceOf(dest)).toString(), priceWithFee.toString())
-      assert.equal("10054", priceWithFee.toString())
-
-      // check fees
-      assert.equal((await lusdToken.balanceOf(await bamm.feePool())).toString(), fees)
-    })    
 
     it('test set params happy path', async () => {
       // --- SETUP ---
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))       
 
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: whale})
-      await lusdToken.mintToken(whale, toBN(dec(100000, 7)), {from: whale})      
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
 
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: whale })
-
-      await bamm.deposit(toBN(dec(6000, 7)), { from: A } )
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
 
       // send ETH to bamm, mimics liquidations. total of 420 usd
       await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
       await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
       
-      await token0.mintToken(bamm.address, toBN(dec(2, 12)))
-      await token1.mintToken(bamm.address, toBN(dec(1, 13)))
-      await token2.mintToken(bamm.address, toBN(dec(1, 4)))
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
 
-      const ethGains = toBN(dec(420,7))
+      const ethGains = toBN(dec(420,8))
 
-      const lusdQty = dec(105, 7)
-      const expectedReturn200 = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(ethGains.mul(toBN(2))), 200)
-      const expectedReturn190 = await bamm.getReturn(lusdQty, dec(6000, 7), toBN(dec(6000, 7)).add(ethGains.mul(toBN(2))), 190)
+      const lusdQty = dec(105, 8)
+      const expectedReturn200 = await bamm.getReturn(lusdQty, dec(6000, 8), toBN(dec(6000, 8)).add(ethGains.mul(toBN(2))), 200)
+      const expectedReturn190 = await bamm.getReturn(lusdQty, dec(6000, 8), toBN(dec(6000, 8)).add(ethGains.mul(toBN(2))), 190)
 
       assert(expectedReturn200.toString() !== expectedReturn190.toString())
 
       // without fee
       await bamm.setParams(200, 0, 0, {from: bammOwner})
-      const priceWithoutFee = await bamm.getSwapAmount(lusdQty, token0.address)
-      assert.equal(priceWithoutFee.toString(), expectedReturn200.mul(toBN(dec(1,12-7))).div(toBN(105)).toString())
+      const priceWithoutFee = await bamm.getSwapAmount(lusdQty, cToken0.address)
+      assert.equal(priceWithoutFee.toString(), expectedReturn200.mul(toBN(dec(1,0))).div(toBN(105)).toString())
 
       // with fee
       await bamm.setParams(190, 100, 0, {from: bammOwner})
-      const priceWithFee = await bamm.getSwapAmount(lusdQty, token0.address)
-      assert.equal(priceWithFee.toString(), expectedReturn190.mul(toBN(dec(1,12-7))).div(toBN(105)).toString())
+      const priceWithFee = await bamm.getSwapAmount(lusdQty, cToken0.address)
+      assert.equal(priceWithFee.toString(), expectedReturn190.mul(toBN(dec(1,0))).div(toBN(105)).toString())
     })    
     
     it('test set params sad path', async () => {
@@ -525,9 +505,9 @@ contract('BAMM', async accounts => {
     })
 
     it('ERC20 test', async () => { // transfer is not supported anymore
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)), {from: A})
-      await lusdToken.approve(bamm.address, toBN(dec(100000, 7)), { from: A })
-      await bamm.deposit(toBN(dec(100000, 7)), {from: A})
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await cLUSD.approve(bamm.address, toBN(dec(100000, 8)), { from: A })
+      await bamm.deposit(toBN(dec(100000, 8)), {from: A})
       
       assert.equal((await bamm.balanceOf(A)).toString(), dec(1,18), "uncexpected bamm balance")
 
@@ -559,9 +539,9 @@ contract('BAMM', async accounts => {
       await bamm.withdraw(dec(4, 17), {from: B})
       await bamm.withdraw(dec(4, 16), {from: D})
 
-      assert.equal((await lusdToken.balanceOf(A)).toString(), dec(100000 * 56 / 100, 7))
-      assert.equal((await lusdToken.balanceOf(B)).toString(), dec(100000 * 4 / 10, 7))
-      assert.equal((await lusdToken.balanceOf(D)).toString(), dec(100000 * 4 / 100, 7))            
+      assert.equal((await cLUSD.balanceOf(A)).toString(), dec(100000 * 56 / 100, 8))
+      assert.equal((await cLUSD.balanceOf(B)).toString(), dec(100000 * 4 / 10, 8))
+      assert.equal((await cLUSD.balanceOf(D)).toString(), dec(100000 * 4 / 100, 8))            
     })
 
     it('test remove collateral', async () => {
@@ -569,33 +549,33 @@ contract('BAMM', async accounts => {
       await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
 
-      await token0.mintToken(bamm.address, dec(1,12))
-      await token1.mintToken(bamm.address, dec(1,13))
-      await token2.mintToken(bamm.address, dec(1,4))
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
       
-      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(6, 7))
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(6, 8))
       assert(await bamm.cTokens(cToken0.address))
       assert(await bamm.cTokens(cToken1.address))
       assert(await bamm.cTokens(cToken2.address))
-      assert((await bamm.priceAggregators(token0.address)).toString() !== ZERO_ADDRESS)
-      assert((await bamm.priceAggregators(token1.address)).toString() !== ZERO_ADDRESS)
-      assert((await bamm.priceAggregators(token2.address)).toString() !== ZERO_ADDRESS)      
+      assert((await bamm.priceAggregators(cToken0.address)).toString() !== ZERO_ADDRESS)
+      assert((await bamm.priceAggregators(cToken1.address)).toString() !== ZERO_ADDRESS)
+      assert((await bamm.priceAggregators(cToken2.address)).toString() !== ZERO_ADDRESS)      
 
 
       await bamm.removeCollateral(cToken1.address, {from: bammOwner})      
-      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(4, 7))
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(4, 8))
       assert(! await bamm.cTokens(cToken1.address))
-      assert.equal((await bamm.priceAggregators(token1.address)).toString(), ZERO_ADDRESS)      
+      assert.equal((await bamm.priceAggregators(cToken1.address)).toString(), ZERO_ADDRESS)      
       
       await bamm.removeCollateral(cToken0.address, {from: bammOwner})      
-      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(3, 7))
+      assert.equal((await bamm.getCollateralValue()).value.toString(), dec(3, 8))
       assert(! await bamm.cTokens(cToken0.address))
-      assert.equal((await bamm.priceAggregators(token0.address)).toString(), ZERO_ADDRESS)
+      assert.equal((await bamm.priceAggregators(cToken0.address)).toString(), ZERO_ADDRESS)
 
       await bamm.removeCollateral(cToken2.address, {from: bammOwner})      
       assert.equal((await bamm.getCollateralValue()).value.toString(), "0")
       assert(! await bamm.cTokens(cToken2.address))
-      assert.equal((await bamm.priceAggregators(token2.address)).toString(), ZERO_ADDRESS)      
+      assert.equal((await bamm.priceAggregators(cToken2.address)).toString(), ZERO_ADDRESS)      
     })
 
     it('test add collateral sad paths', async () => {
@@ -610,10 +590,6 @@ contract('BAMM', async accounts => {
       // try to add existng collateral
       await assertRevert(bamm.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner}), "addCollateral: collateral listed")
       
-      // try to add existng underlying
-      const newCToken2 = await MockCToken.new(token1.address, false)
-      await assertRevert(bamm.addCollateral(newCToken2.address, priceFeed1.address, {from: bammOwner}), "addCollateral: underlying already added")
-
       // try to add as non owner
       await assertRevert(bamm.addCollateral(newCToken.address, priceFeed0.address, {from: shmuel}), "Ownable: caller is not the owner")      
     })
@@ -623,9 +599,9 @@ contract('BAMM', async accounts => {
       await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
 
-      await token0.mintToken(bamm.address, dec(1,12))
-      await token1.mintToken(bamm.address, dec(1,13))
-      await token2.mintToken(bamm.address, dec(1,4))
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
 
       assert((await bamm.getCollateralValue()).succ, "getCollateralValue should not fail")
 
@@ -640,17 +616,17 @@ contract('BAMM', async accounts => {
       await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
 
-      await token0.mintToken(bamm.address, dec(1,12))
-      await token1.mintToken(bamm.address, dec(1,13))
-      await token2.mintToken(bamm.address, dec(1,4))
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
 
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)))
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
 
       // nullify price feed 1
       await priceFeed1.setTimestamp(888) // now price expired
 
-      await assertRevert(bamm.deposit(toBN(dec(6000, 7)), { from: A } ), "deposit: chainlink is down")
+      await assertRevert(bamm.deposit(toBN(dec(6000, 8)), { from: A } ), "deposit: chainlink is down")
     })
 
     it('swap sad paths', async () => {
@@ -658,25 +634,25 @@ contract('BAMM', async accounts => {
       await priceFeed1.setPrice(dec(2, 18), {from: bammOwner});
       await priceFeed2.setPrice(dec(3, 18), {from: bammOwner});
 
-      await token0.mintToken(bamm.address, dec(1,12))
-      await token1.mintToken(bamm.address, dec(1,13))
-      await token2.mintToken(bamm.address, dec(1,4))
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
 
-      await lusdToken.mintToken(A, toBN(dec(100000, 7)))
-      await lusdToken.approve(bamm.address, toBN(dec(10000, 7)), { from: A })
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
 
       // call getSwapAmount and get non 0 value
-      let price = await bamm.getSwapAmount(dec(1, 7), token1.address)
+      let price = await bamm.getSwapAmount(dec(1, 8), cToken1.address)
       assert(price.gt(toBN(0)), "expecting price > 0, and got " + price.toString())
 
       // nullify price feed 1
       await priceFeed1.setTimestamp(888) // now price expired
 
       // call getSwapAmount and get non 0 value
-      price = await bamm.getSwapAmount(dec(1, 7), token1.address)
+      price = await bamm.getSwapAmount(dec(1, 8), cToken1.address)
       assert.equal(price.toString(), "0")
 
-      await assertRevert(bamm.swap(1, lusdToken.address, 0, ZERO_ADDRESS, { from: A } ), "swap: unsupported")
+      await assertRevert(bamm.swap(1, cLUSD.address, 0, ZERO_ADDRESS, "0x", { from: A } ), "swap: unsupported")
     })
 
     it('liquidateBorrow sad path', async () => {

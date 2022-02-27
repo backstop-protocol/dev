@@ -4,16 +4,18 @@
 pragma solidity 0.6.11;
 
 import "./../Dependencies/IERC20.sol";
+import "./MockToken.sol";
 
-contract MockCToken {
+contract MockCToken is TokenAdapter2 {
     IERC20 token;
     bool isEth;    
-    mapping(address => uint) public balanceOf;
     uint price;
+    uint public exchangeRate = 1e18;
 
     constructor (IERC20 _token, bool _isETH) public {
         token = _token;
         isEth = _isETH;
+        decimals = 8;
     }
 
     function underlying() external view returns(IERC20) {
@@ -21,7 +23,7 @@ contract MockCToken {
         return token;
     }
 
-    function redeem(uint redeemTokens) external returns (uint) {
+    function redeem(uint redeemTokens) public returns (uint) {
         require(balanceOf[msg.sender] >= redeemTokens, "redeem: insufficient ballance");
         
         if(isEth) msg.sender.transfer(redeemTokens);
@@ -29,31 +31,75 @@ contract MockCToken {
 
         balanceOf[msg.sender] -= redeemTokens;
     }
-        
-    function depositToken(uint amount) public {
-        require(!isEth, "depositToken: failed only ETH can be deposited use depositEther");
-        token.transferFrom(msg.sender, address(this), amount);
-        balanceOf[msg.sender] += amount;
+
+    function balanceOfUnderlying(address account) external view returns (uint) {
+        return balanceOf[account] * exchangeRate / 1e18;
     }
 
-    function depositEther() public payable {
+    function redeemUnderlying(uint redeemAmount) external returns (uint) {
+        uint ctokenAmount = (redeemAmount * 1e18 + (exchangeRate - 1)) / exchangeRate;
+        redeem(ctokenAmount);
+    }
+
+    function exchangeRateCurrent() external returns(uint) {
+        return exchangeRate;
+    }
+        
+    function depositToken(uint amount) public returns(uint) {
+        require(!isEth, "depositToken: failed only ETH can be deposited use depositEther");
+        token.transferFrom(msg.sender, address(this), amount);
+
+        uint normAmount = amount * 1e18 / exchangeRate;
+
+        balanceOf[msg.sender] += normAmount;
+
+        return normAmount;
+    }
+
+    function depositEther() public payable returns(uint) {
         require(isEth, "depositEther: failed only ERC20 can be deposited use depositToken");
-        balanceOf[msg.sender] += msg.value; 
+
+        uint normAmount = msg.value * 1e18 / exchangeRate;
+
+        balanceOf[msg.sender] += normAmount;
+
+        return normAmount;
+    }
+
+
+    function setPrice(uint _price) public {
+        price = _price;
+    }
+
+    function setExchangeRate(uint _rate) public {
+        exchangeRate = _rate;
+    }
+
+    function getCash() public view returns(uint) {
+        if(isEth) return address(this).balance;
+        return token.balanceOf(address(this));
+    }
+
+    function borrow(uint amount) public {
+        if(isEth) msg.sender.transfer(amount);
+        else token.transfer(msg.sender, amount);
+    }
+
+    function liquidateBorrow(address borrower, uint amount, MockCToken collateral) external returns (uint) {
+        require(! isEth, "can't liquidate ETH");
+        token.transferFrom(msg.sender, address(this), amount);
+        collateral.transfer(borrower, msg.sender, amount * price / 1e18);
+    }
+
+    function liquidateBorrow(address borrower, MockCToken collateral) external payable returns (uint) {
+        require(isEth, "can't liquidate non ETH");
+        uint amount = msg.value;
+        collateral.transfer(borrower, msg.sender, amount * price / 1e18);
     }
 
     function transfer(address from, address to, uint amount) public {
         require(balanceOf[from] >= amount, "transfer: insufficient ballance");
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
-    }
-
-    function setPrice(uint _price) public {
-        price = _price;
-    }
-
-    function liquidateBorrow(address borrower, uint amount, MockCToken collateral) external returns (uint) {
-        require(isEth == false, "can't liquidate ETH");
-        token.transferFrom(msg.sender, address(this), amount);
-        collateral.transfer(borrower, msg.sender, amount * price / 1e18);
-    }
+    }     
 }

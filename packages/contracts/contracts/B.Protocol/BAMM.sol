@@ -14,10 +14,20 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 
 interface ICToken {
-    function redeem(uint redeemTokens) external returns (uint);
     function balanceOf(address a) external view returns (uint);
     function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint);
     function underlying() external view returns(IERC20);
+    function getCash() external view returns(uint);
+    function balanceOfUnderlying(address account) external view returns (uint);
+    function redeemUnderlying(uint redeemAmount) external returns (uint);
+}
+
+interface ICETH {
+    function liquidateBorrow(address borrower, address cTokenCollateral) payable external;
+}
+
+interface IFlashswap {
+    function bammFlashswap(address initiator, uint lusdAmount, uint returnAmount, bytes memory data) external; 
 }
 
 contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
@@ -31,6 +41,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     mapping(address => uint) public collateralDecimals;
     mapping(address => bool) public cTokens;
     ICToken public immutable cBorrow;
+    bool public immutable isCETH;
 
     address payable public immutable feePool;
     uint public constant MAX_FEE = 100; // 1%
@@ -51,22 +62,23 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     event RebalanceSwap(address indexed user, uint lusdAmount, IERC20 token, uint tokenAmount, uint timestamp);
 
     constructor(
-        address _LUSD,
         address _cBorrow,
+        bool _isCETH,
         uint _maxDiscount,
         address payable _feePool)
         public
     {
-        LUSD = IERC20(_LUSD);
-        lusdDecimals = ERC20(_LUSD).decimals();
+        LUSD = IERC20(_cBorrow);
+        lusdDecimals = ERC20(_cBorrow).decimals();
         cBorrow = ICToken(_cBorrow);
+        isCETH = _isCETH;
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
 
-        IERC20(_LUSD).safeApprove(address(_cBorrow), uint(-1));
+        if(! _isCETH) IERC20(ICToken(_cBorrow).underlying()).safeApprove(address(_cBorrow), uint(-1));
 
-        require(ERC20(_LUSD).decimals() <= 18, "unsupported decimals");
+        require(ERC20(_cBorrow).decimals() <= 18, "unsupported decimals");
     }
 
     function setParams(uint _A, uint _fee, uint _callerFee) external onlyOwner {
@@ -83,7 +95,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     }
 
     function addCollateral(ICToken ctoken, AggregatorV3Interface feed) external onlyOwner {
-        IERC20 token = ctoken.underlying();
+        IERC20 token = IERC20(address(ctoken));
 
         // validations
         require(token != LUSD, "addCollateral: LUSD cannot be collateral");
@@ -99,7 +111,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     }
 
     function removeCollateral(ICToken ctoken) external onlyOwner {
-        IERC20 token = ctoken.underlying();
+        IERC20 token = IERC20(address(ctoken));
 
         for(uint i = 0 ; i < collaterals.length ; i++) {
             if(collaterals[i] == token) {
@@ -262,19 +274,24 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     }
 
     // get token in return to LUSD
-    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest) public nonReentrant returns(uint) {
+    function swap(uint lusdAmount, IERC20 returnToken, uint minReturn, address payable dest, bytes memory data) public nonReentrant returns(uint) {
         require(returnToken != LUSD, "swap: unsupported");
 
         uint returnAmount = getSwapAmount(lusdAmount, returnToken);
 
         require(returnAmount >= minReturn, "swap: low return");
 
-        LUSD.safeTransferFrom(msg.sender, address(this), lusdAmount);
-
         uint feeAmount = addBps(lusdAmount, int(fee)).sub(lusdAmount);
         if(feeAmount > 0) LUSD.safeTransfer(feePool, feeAmount);
 
+        // first send the return
         returnToken.safeTransfer(dest, returnAmount);
+
+        // now dest can prepare the lusd - and send it to msg.sender
+        if(data.length != 0) IFlashswap(dest).bammFlashswap(msg.sender, lusdAmount, returnAmount, data);
+
+        // get the lusd
+        LUSD.safeTransferFrom(msg.sender, address(this), lusdAmount);
 
         emit RebalanceSwap(msg.sender, lusdAmount, returnToken, returnAmount, now);
 
@@ -295,22 +312,32 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         if(cTokenBorrowed != cBorrow) return false;
         if((! cTokens[address(cTokenCollateral)]) && (cTokenCollateral != cTokenBorrowed)) return false;
 
-        return repayAmount <= LUSD.balanceOf(address(this));
+        // check if there is sufficient balance at the backstop
+        if(repayAmount > cBorrow.balanceOfUnderlying(address(this))) return false;
+        if(repayAmount > cBorrow.getCash()) return false;
+
+        return true;
     }
 
     // callable by anyone
     function liquidateBorrow(address borrower, uint amount, ICToken collateral) external nonReentrant returns (uint) {
         require(cTokens[address(collateral)] || collateral == cBorrow, "liquidateBorrow: invalid collateral");
 
-        IERC20 colToken = IERC20(collateral.underlying());
+        IERC20 colToken = IERC20(address(collateral));
 
         uint tokenBalBefore = colToken.balanceOf(address(this));
-        require(cBorrow.liquidateBorrow(borrower, amount, address(collateral)) == 0, "liquidateBorrow: liquidation failed");
-        require(collateral.redeem(collateral.balanceOf(address(this))) == 0, "liquidateBorrow: collateral redeem failed");       
+        require(cBorrow.redeemUnderlying(amount) == 0, "liquidateBorrow: redeem failed");
+        if(isCETH) {
+            ICETH(address(cBorrow)).liquidateBorrow{value: amount}(borrower, address(collateral));            
+        }
+        else {
+            require(cBorrow.liquidateBorrow(borrower, amount, address(collateral)) == 0, "liquidateBorrow: liquidation failed");
+        }
+
         uint tokenBalAfter = colToken.balanceOf(address(this));
 
+        // if collateral == cBorrow, then caller fee will be quite small, but this is a feature
         uint deltaToken = tokenBalAfter.sub(tokenBalBefore);
-        if(collateral == cBorrow) deltaToken = amount;
 
         uint feeAmount = addBps(deltaToken, int(callerFee)).sub(deltaToken);
         if(feeAmount > 0 ) colToken.safeTransfer(msg.sender, feeAmount);
