@@ -17,6 +17,8 @@ const MockWithAdmin = artifacts.require("MockWithAdmin")
 const BLens = artifacts.require("BLens.sol")
 const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
 const FlashswapStub = artifacts.require("FlashswapStub.sol")
+const FlashswapHonest = artifacts.require("FlashswapHonest.sol")
+const FlashswapMalicious = artifacts.require("FlashswapMalicious.sol")
 
 const ZERO = toBN('0')
 const ZERO_ADDRESS = th.ZERO_ADDRESS
@@ -66,8 +68,6 @@ contract('BAMM', async accounts => {
   let cToken2
   let cETH
 
-  let flashswapStub
-
   const feePool = "0x1000000000000000000000000000000000000001"
 
   const isWithin99Percent = (onePercent, b)=> {
@@ -116,8 +116,6 @@ contract('BAMM', async accounts => {
       await bammETH.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner})
       await bammETH.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
       await bammETH.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
-
-      flashswapStub = await FlashswapStub.new()
     })
 
     it("liquidateBorrow bamm", async () => {
@@ -377,6 +375,60 @@ contract('BAMM', async accounts => {
       assert.equal(toBN(dec(250, 8)).toString(), token2BalAfter.sub(token2BalBefore).toString())
     })
 
+    it('test efficient withdraw', async () => {
+      // --- SETUP ---
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+            
+      await cLUSD.approve(bamm.address, toBN(dec(6000, 8)), { from: A })
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+
+      // send $6k collateral to bamm, mimics liquidations
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(1000, 8))) // $3k
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(200, 8))) // $1k
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(500, 8))) // $2k
+
+      // price set so that total collateral is $6k
+      await priceFeed0.setPrice(dec(3, 18));
+      await priceFeed1.setPrice(dec(5, 18));
+      await priceFeed2.setPrice(dec(4, 18));
+
+
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
+      const collateralValue = await bamm.getCollateralValue()
+      assert(collateralValue.succ, "get collateral value failed")      
+      assert.equal((collateralValue.value).toString(), toBN(dec(6000, 8)).toString(), "unexpected collateral value")
+
+      const to = bob
+
+      // withdraw half of shares without collateral
+      await bamm.efficientWithdraw(dec(5,17), to, false, dec(3000, 8), {from: A})
+      
+      // lusd balance
+      assert.equal((await cLUSD.balanceOf(to)).toString(), dec(3000, 8))
+      // collateral value should not change
+      assert.equal(collateralValue.toString(), (await bamm.getCollateralValue()).toString())
+      // ctoken value
+      assert.equal((await cToken0.balanceOf(to)).toString(), "0")      
+      assert.equal((await cToken1.balanceOf(to)).toString(), "0")
+      assert.equal((await cToken2.balanceOf(to)).toString(), "0")
+
+      // withdraw with min amount too high
+      assertRevert(bamm.efficientWithdraw(dec(5,17), to, false, dec(3001, 8), {from: A}), "efficientWithdraw: insufficient lusd amount")
+
+      // withdraw with collateral
+      await bamm.efficientWithdraw(dec(5,17), to, true, dec(3000, 8), {from: A})
+      // lusd balance
+      assert.equal((await cLUSD.balanceOf(to)).toString(), dec(6000, 8))
+      // collateral value should be 0
+      const collateralValue2 = await bamm.getCollateralValue()
+      assert(collateralValue2.succ, "get collateral value failed")
+      assert.equal("0", (collateralValue2.value).toString())
+      // ctoken value
+      assert.equal((await cToken0.balanceOf(to)).toString(), dec(1000, 8))      
+      assert.equal((await cToken1.balanceOf(to)).toString(), dec(200, 8))
+      assert.equal((await cToken2.balanceOf(to)).toString(), dec(500, 8))      
+    })    
+
     it('price exceed max dicount and/or collateral balance', async () => {
       await mintCLUSD(A, toBN(dec(100000, 8)))
       await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
@@ -499,7 +551,7 @@ contract('BAMM', async accounts => {
       assert.equal((await cLUSD.balanceOf(await bamm.feePool())).toString(), fees)
     })
 
-    it('test flash swap', async () => {
+    it('test flash swap stub', async () => {
       await mintCLUSD(A, toBN(dec(100000, 8)))
       await mintCLUSD(whale, toBN(dec(100000, 8)))      
 
@@ -523,6 +575,7 @@ contract('BAMM', async accounts => {
       const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
 
       await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
+      const flashswapStub = await FlashswapStub.new()      
       const dest = flashswapStub.address
       
       await bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: whale})
@@ -535,6 +588,134 @@ contract('BAMM', async accounts => {
 
       // check eth balance
       assert.equal((await cToken0.balanceOf(dest)).toString(), priceWithFee.toString())
+    })    
+
+    it('test flash swap honest', async () => {
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))      
+
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
+
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
+
+      // send ETH to bamm, mimics liquidations. total of 420 usd
+      await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
+
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
+
+      // with fee
+      await bamm.setParams(20, 100, 0, {from: bammOwner})
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+
+      await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
+      const flashswapHonest = await FlashswapHonest.new(bamm.address, bob)      
+      const dest = flashswapHonest.address
+
+      // send lusd to flash swap so it can send it to bob
+      await cLUSD.transfer(dest, dec(105, 8), {from: whale})
+      // give allowance from bob to bamm so it could pay for flash loan
+      await cLUSD.approve(bamm.address, dec(105, 8), {from: bob})
+      
+      await bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob})
+
+      // check eth balance
+      assert.equal((await cToken0.balanceOf(dest)).toString(), priceWithFee.toString())
+    })
+
+    it('test flash swap without repay', async () => {
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))      
+
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
+
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
+
+      // send ETH to bamm, mimics liquidations. total of 420 usd
+      await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
+
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
+
+      // with fee
+      await bamm.setParams(20, 100, 0, {from: bammOwner})
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+
+      await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
+      const flashswapHonest = await FlashswapHonest.new(bamm.address, carol) // send lusd to carol and not bob     
+      const dest = flashswapHonest.address
+
+      // send lusd to flash swap so it can send it to bob
+      await cLUSD.transfer(dest, dec(105, 8), {from: whale})
+      // give allowance from bob to bamm so it could pay for flash loan
+      await cLUSD.approve(bamm.address, dec(105, 8), {from: bob})
+      
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "transferFrom: insufficient balance")
+    })    
+    
+    it('test flash swap malicious', async () => {
+      await mintCLUSD(A, toBN(dec(100000, 8)))
+      await mintCLUSD(whale, toBN(dec(100000, 8)))      
+
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: A })
+      await cLUSD.approve(bamm.address, toBN(dec(10000, 8)), { from: whale })
+
+      await bamm.deposit(toBN(dec(6000, 8)), { from: A } )
+      assert.equal(toBN(dec(6000, 8)).toString(), (await cLUSD.balanceOf(bamm.address)).toString())
+
+      // send ETH to bamm, mimics liquidations. total of 420 usd
+      await priceFeed0.setPrice(dec(105, 18), {from: bammOwner});
+      await priceFeed1.setPrice(dec(90, 18), {from: bammOwner});
+      await priceFeed2.setPrice(dec(120, 18), {from: bammOwner});
+
+      await mintCToken(token0, cToken0, bamm.address, toBN(dec(2, 8)))
+      await mintCToken(token1, cToken1, bamm.address, toBN(dec(1, 8)))
+      await mintCToken(token2, cToken2, bamm.address, toBN(dec(1, 8)))
+
+      // with fee
+      await bamm.setParams(20, 100, 0, {from: bammOwner})
+      const priceWithFee = await bamm.getSwapAmount(dec(105, 8), cToken0.address)
+
+      await cLUSD.approve(bamm.address, dec(105,8), {from: whale})
+      const flashswapMalicious = await FlashswapMalicious.new(bamm.address)      
+      const dest = flashswapMalicious.address
+
+      const fakeBAMM = await BAMM.at(flashswapMalicious.address)
+
+      // set data to deposit
+      await fakeBAMM.deposit(100)
+      //console.log(await flashswapMalicious.data())
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "ReentrancyGuard: reentrant call")
+
+      // set data to withdraw
+      await fakeBAMM.withdraw(100)
+      //console.log(await flashswapMalicious.data())
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "ReentrancyGuard: reentrant call")
+
+      // set data to efficient withdraw
+      await fakeBAMM.efficientWithdraw(100, bob, true, 101)
+      //console.log(await flashswapMalicious.data())
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "ReentrancyGuard: reentrant call")
+
+      // set data to swap
+      await fakeBAMM.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234")
+      //console.log(await flashswapMalicious.data())
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "ReentrancyGuard: reentrant call")
+
+      // set data to swap
+      await fakeBAMM.liquidateBorrow(bob, 7, cToken0.address)
+      //console.log(await flashswapMalicious.data())
+      await assertRevert(bamm.swap(dec(105,8), cToken0.address, priceWithFee, dest, "0x1234", {from: bob}), "ReentrancyGuard: reentrant call")      
     })    
 
     it('test set params happy path', async () => {
@@ -778,8 +959,9 @@ contract('BAMM', async accounts => {
 
 // TODO - test:
 // 1. ETH debt liquidation. V
-// 2. flash callback
-// 3. reentry test
+// 2. flash callback V
+// 3. reentry test V
+// 4. efficient withdraw V
 
 function almostTheSame(n1, n2) {
   n1 = Number(web3.utils.fromWei(n1))
