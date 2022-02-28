@@ -215,16 +215,17 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         emit UserDeposit(msg.sender, lusdAmount, newShare);        
     }
 
-    function withdraw(uint numShares) external nonReentrant {
+    function efficientWithdraw(uint numShares, address to, bool withdrawCollateral, uint minLusd) public nonReentrant {
         uint supplyBefore = totalSupply; // this is to save gas
 
         uint lusdBal = LUSD.balanceOf(address(this));
         uint lusdAmount = lusdBal.mul(numShares).div(supplyBefore);
+        require(lusdAmount >= minLusd, "efficientWithdraw: insufficient lusd amount");
 
         uint[] memory collateralAmounts = new uint[](collaterals.length);
         IERC20[] memory collateralTypes = collaterals;
 
-        for(uint i = 0 ; i < collateralTypes.length ; i++) {
+        for(uint i = 0 ; (i < collateralTypes.length) && withdrawCollateral ; i++) {
             uint bal = collateralTypes[i].balanceOf(address(this));
             collateralAmounts[i] = bal.mul(numShares).div(supplyBefore);
         }
@@ -233,12 +234,16 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         burn(msg.sender, numShares);
 
         // send lusd and collateral leftovers
-        if(lusdAmount > 0) LUSD.safeTransfer(msg.sender, lusdAmount);
+        if(lusdAmount > 0) LUSD.safeTransfer(to, lusdAmount);
         for(uint i = 0 ; i < collateralTypes.length ; i++) {
-            if(collateralAmounts[i] > 0 ) collateralTypes[i].safeTransfer(msg.sender, collateralAmounts[i]);
+            if(collateralAmounts[i] > 0 ) collateralTypes[i].safeTransfer(to, collateralAmounts[i]);
         }
 
         emit UserWithdraw(msg.sender, lusdAmount, numShares);            
+    }
+
+    function withdraw(uint numShares) external {
+        efficientWithdraw(numShares, msg.sender, true, 0);
     }
 
     function addBps(uint n, int bps) internal pure returns(uint) {
