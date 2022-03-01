@@ -287,7 +287,6 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         require(returnAmount >= minReturn, "swap: low return");
 
         uint feeAmount = addBps(lusdAmount, int(fee)).sub(lusdAmount);
-        if(feeAmount > 0) LUSD.safeTransfer(feePool, feeAmount);
 
         // first send the return
         returnToken.safeTransfer(dest, returnAmount);
@@ -297,6 +296,8 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
 
         // get the lusd
         LUSD.safeTransferFrom(msg.sender, address(this), lusdAmount);
+        // send fees
+        if(feeAmount > 0) LUSD.safeTransfer(feePool, feeAmount);
 
         emit RebalanceSwap(msg.sender, lusdAmount, returnToken, returnAmount, now);
 
