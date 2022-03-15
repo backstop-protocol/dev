@@ -11,7 +11,7 @@ const TroveManagerTester = artifacts.require("TroveManagerTester")
 const MockToken = artifacts.require("MockToken")
 const MockCToken = artifacts.require("MockCToken")
 const NonPayable = artifacts.require('NonPayable.sol')
-const BAMM = artifacts.require("BAMM.sol")
+const BAMM = artifacts.require("HundredBAMM.sol")
 const Admin = artifacts.require("Admin")
 const MockWithAdmin = artifacts.require("MockWithAdmin")
 const BLens = artifacts.require("BLens.sol")
@@ -116,6 +116,16 @@ contract('BAMM', async accounts => {
       await bammETH.addCollateral(cToken0.address, priceFeed0.address, {from: bammOwner})
       await bammETH.addCollateral(cToken1.address, priceFeed1.address, {from: bammOwner})
       await bammETH.addCollateral(cToken2.address, priceFeed2.address, {from: bammOwner})
+    })
+
+    it("test hundred extension", async () => {
+      const symbol = await bamm.symbol()
+      const name = await bamm.name()
+      assert.equal(symbol, "bBAMM")
+      assert.equal(name, "bBAMM")
+
+      const collateralCount = await bamm.collateralCount()
+      assert.equal(collateralCount.toString(), "3")
     })
 
     it("liquidateBorrow bamm", async () => {

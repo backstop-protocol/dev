@@ -8,8 +8,8 @@ import "./../Dependencies/SafeMath.sol";
 contract TokenAdapter {
     using SafeMath for uint256;
 
-    string constant public name = "B.AMM";
-    string constant public symbol = "BAMM";
+    string public name = "B.AMM";
+    string public symbol = "BAMM";
     uint8 constant public decimals = 18;
 
     uint public totalSupply;
