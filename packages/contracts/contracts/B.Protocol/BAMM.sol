@@ -326,7 +326,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     }
 
     // callable by anyone
-    function liquidateBorrow(address borrower, uint amount, ICToken collateral) external nonReentrant returns (uint) {
+    function liquidateBorrow(address borrower, uint amount, ICToken collateral) public virtual nonReentrant returns (uint) {
         require(cTokens[address(collateral)] || collateral == cBorrow, "liquidateBorrow: invalid collateral");
 
         IERC20 colToken = IERC20(address(collateral));

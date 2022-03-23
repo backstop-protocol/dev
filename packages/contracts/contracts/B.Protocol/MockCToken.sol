@@ -101,5 +101,18 @@ contract MockCToken is TokenAdapter2 {
         require(balanceOf[from] >= amount, "transfer: insufficient ballance");
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
-    }     
+    }
+
+    // fake stuff for fuse
+    function comptroller() external view returns(address) {
+        return address(this);
+    }
+
+    function admin() external view returns(address) {
+        return address(this);
+    }
+
+    function _setSeizePaused(bool state) external returns (bool) {
+        return true;
+    } 
 }

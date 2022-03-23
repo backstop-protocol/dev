@@ -2,7 +2,7 @@
 
 pragma solidity 0.6.11;
 
-import { BAMM } from "./BAMM.sol";
+import "./BAMM.sol";
 
 interface SymbolLike {
     function symbol() view external returns(string memory);
