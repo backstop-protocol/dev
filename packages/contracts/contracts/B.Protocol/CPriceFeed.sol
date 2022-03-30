@@ -89,8 +89,12 @@ interface OwnershipLike {
 }
 
 contract CollateralAdder {
+    address public admin;
+    constructor() public {
+        admin = msg.sender;
+    }
     function add(address[] calldata ctokens, OwnershipLike bamm, CPriceFeed cFeed) external {
-        require(msg.sender == 0x23cBF6d1b738423365c6930F075Ed6feEF7d14f3, "invalid owner");
+        require(msg.sender == admin, "add: invalid owner");
 
         for(uint i = 0 ; i < ctokens.length ; i++) {
             address ctoken = ctokens[i];
@@ -102,44 +106,3 @@ contract CollateralAdder {
     }
 }
 
-
-interface BAMMSwapLike {
-    function swap(uint lusdAmount, address returnToken, uint minReturn, address dest, bytes memory data) external returns(uint);
-}
-
-interface ICToken {
-    function balanceOf(address a) external view returns (uint);
-    function underlying() external view returns(IERC20);
-    function redeem(uint redeemAmount) external returns (uint);
-    function mint(uint amount) external returns(uint);
-}
-
-interface IERC20 {
-    function balanceOf(address tokenOwner) external view returns (uint balance);
-    function allowance(address tokenOwner, address spender) external view returns (uint remaining);
-    function transfer(address to, uint tokens) external returns (bool success);
-    function approve(address spender, uint tokens) external returns (bool success);
-    function transferFrom(address from, address to, uint tokens) external returns (bool success);
-}
-
-contract Swap {
-    function swap(address bamm, uint underlyingAmount, address ctokenOutput, uint minOutputUnerlyingAmount) public {
-        address cBorrow = BAMMLike(bamm).cBorrow();
-        IERC20 erc20 = IERC20(ICToken(cBorrow).underlying());
-        erc20.transferFrom(msg.sender, address(this), underlyingAmount);
-        erc20.approve(cBorrow, underlyingAmount);
-        ICToken(cBorrow).mint(underlyingAmount);
-        uint cBalance = IERC20(cBorrow).balanceOf(address(this));
-        IERC20(cBorrow).approve(bamm, cBalance);
-        bytes memory empty;
-        uint ctokenOutBalance = BAMMSwapLike(bamm).swap(cBalance, ctokenOutput, 0, address(this), empty);
-
-        IERC20 erc20Out = IERC20(ICToken(ctokenOutput).underlying());
-        ICToken(ctokenOutput).redeem(ctokenOutBalance);
-
-        uint outBalance = erc20Out.balanceOf(address(this));
-        require(outBalance >= minOutputUnerlyingAmount, "swap: return amount too small");
-
-        erc20Out.transfer(msg.sender, outBalance);
-    }
-}

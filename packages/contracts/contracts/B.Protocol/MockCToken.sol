@@ -114,5 +114,9 @@ contract MockCToken is TokenAdapter2 {
 
     function _setSeizePaused(bool state) external returns (bool) {
         return true;
-    } 
+    }
+
+    function mint(uint amount) public {
+        
+    }
 }

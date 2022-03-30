@@ -1,0 +1,6 @@
+{
+    "comptrollerAddress" : "0xedba32185baf7fef9a26ca567bc4a6cbe426e499",
+    "helperAddress" : "0x19830074CeEe045362eCA46c972D3e3a225151D8",
+    "startBlock" : 26300341,
+    "bammAddresses" : ["0xEDCE1C21ad6cb55D647671682b35766EA4a440f1", "0xCebDf18Ac062Cfa15fb3416dD453342e72b17E25", "0xA8d60f5Cc2C01bd1514348753140fAA28E449e3D"]
+}
