@@ -107,7 +107,8 @@ async function doLiquidate(user, bammAddress, ctoken, repayAmount) {
     web3.eth.accounts.wallet.add(account)
     
     const bammContract = new web3.eth.Contract(abi.BAMM, bammAddress)
-    await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853})
+    const gasPrice = await web3.eth.getGasPrice()
+    await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853, gasPrice})
 }
 
 async function run() {

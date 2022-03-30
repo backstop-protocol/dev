@@ -325,7 +325,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         (uint err, uint ctokenBalance, /* borrow balance */, uint exchangeRateMantissa) = cBorrow.getAccountSnapshot(address(this));
         if(err != 0) return false;
 
-        uint underlyingBalance = ctokenBalance.mul(1e18) / exchangeRateMantissa;
+        uint underlyingBalance = ctokenBalance.mul(exchangeRateMantissa) / 1e18;
 
         if(repayAmount > underlyingBalance) return false;
         if(repayAmount > cBorrow.getCash()) return false;
