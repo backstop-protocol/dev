@@ -18,7 +18,10 @@ interface ICToken {
     function liquidateBorrow(address borrower, uint amount, address collateral) external returns (uint);
     function underlying() external view returns(IERC20);
     function getCash() external view returns(uint);
-    function balanceOfUnderlying(address account) external view returns (uint);
+    function getAccountSnapshot(address account)
+        external
+        view
+        returns(uint err, uint cTokenBalance, uint borrowBalance, uint exchangeRateMantissa);
     function redeemUnderlying(uint redeemAmount) external returns (uint);
 }
 
@@ -319,7 +322,12 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         if((! cTokens[address(cTokenCollateral)]) && (cTokenCollateral != cTokenBorrowed)) return false;
 
         // check if there is sufficient balance at the backstop
-        if(repayAmount > cBorrow.balanceOfUnderlying(address(this))) return false;
+        (uint err, uint ctokenBalance, /* borrow balance */, uint exchangeRateMantissa) = cBorrow.getAccountSnapshot(address(this));
+        if(err != 0) return false;
+
+        uint underlyingBalance = ctokenBalance.mul(1e18) / exchangeRateMantissa;
+
+        if(repayAmount > underlyingBalance) return false;
         if(repayAmount > cBorrow.getCash()) return false;
 
         return true;

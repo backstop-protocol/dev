@@ -11,6 +11,7 @@ contract MockCToken is TokenAdapter2 {
     bool isEth;    
     uint price;
     uint public exchangeRate = 1e18;
+    uint errorVal = 0;
 
     constructor (IERC20 _token, bool _isETH) public {
         token = _token;
@@ -32,9 +33,21 @@ contract MockCToken is TokenAdapter2 {
         balanceOf[msg.sender] -= redeemTokens;
     }
 
-    function balanceOfUnderlying(address account) external view returns (uint) {
+    function balanceOfUnderlying(address account) external returns (uint) {
         return balanceOf[account] * exchangeRate / 1e18;
     }
+
+    function setErrorVal(uint _val) external {
+        errorVal = _val;
+    }
+
+    function getAccountSnapshot(address account)
+        external
+        view
+        returns(uint err, uint cTokenBalance, uint borrowBalance, uint exchangeRateMantissa)
+    {
+        return (errorVal, balanceOf[account], 0, exchangeRate);
+    }    
 
     function redeemUnderlying(uint redeemAmount) external returns (uint) {
         uint ctokenAmount = (redeemAmount * 1e18 + (exchangeRate - 1)) / exchangeRate;

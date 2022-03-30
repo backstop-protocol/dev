@@ -222,6 +222,12 @@ contract('BAMM', async accounts => {
       canLiquidate = await bamm.canLiquidate(cLUSD.address, cToken2.address, liquidationAmount)
       assert.equal(canLiquidate, true)
 
+      // error ret val
+      await cLUSD.setErrorVal(1)
+      canLiquidate = await bamm.canLiquidate(cLUSD.address, cToken2.address, liquidationAmount)
+      assert.equal(canLiquidate, false)
+      await cLUSD.setErrorVal(0)
+
       // invalid ctoken
       const cToken3 = await MockCToken.new((await MockToken.new(1)).address, false)
 
