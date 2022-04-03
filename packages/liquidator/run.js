@@ -1,4 +1,4 @@
-const {run} = require('./liquidator')
+const {run} = require('./liquidator_generic')
 
 const init = async ()=>{ 
   await run()
