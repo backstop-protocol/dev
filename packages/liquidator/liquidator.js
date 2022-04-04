@@ -7,7 +7,7 @@ const web3 = new Web3(secret.nodeEndPoint)
 const {uploadJsonFile} = require("./s3-client")
 
 
-const fileName = "liquidatorStoredData_hundred_fantom.json"
+const fileName = "liquidatorStoredData_hundred_polygon.json"
 let storedData = {
     accounts: [],
     lastCoveredBlock: 20683828 + 1
