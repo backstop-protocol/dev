@@ -129,7 +129,12 @@ contract MockCToken is TokenAdapter2 {
         return true;
     }
 
-    function mint(uint amount) public {
-        
+    function mint() public payable {
+        depositEther();
+    }
+    
+    function mint(uint amount) public returns(uint) {
+        depositToken(amount);
+        return 0;
     }
 }
