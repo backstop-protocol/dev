@@ -15,6 +15,8 @@ const BAMM = artifacts.require("BAMM.sol")
 const BLens = artifacts.require("BLens.sol")
 const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
 const Keeper = artifacts.require("FlashKeeper.sol")
+const Arb = artifacts.require("FlashArb.sol")
+
 
 
 const ZERO = toBN('0')
@@ -75,7 +77,48 @@ contract('BAMM', async accounts => {
     beforeEach(async () => {
     })
 
-    it.only("Arb", async () => {
+
+    it.only("Arb iotex", async () => {
+      const router = "0x95cB18889B968AbABb9104f30aF5b310bD007Fd8"
+      const wmatic = "0xA00744882684C3e4747faEFD68D283eA44099D03"
+      const hmatic = "0x243E33aa7f6787154a8E59d3C27a66db3F8818ee"
+
+      const iotexBamms = ["0xCE0A876996248421606F4ad8a09B1D3E15f69EfB","0x4Db1d29eA5b51dDADcc5Ab26709dDA49e7eB1E71", "0x8cF0B1c886Ee522427ef57F5601689352F8161eb", "0x7D30d048F8693aF30A10aa5D6d281A7A7E6E1245"]
+      const keepers = []
+
+      for(const bamm of iotexBamms) {
+        console.log("deploying keepers")
+        const keeper = await Keeper.new(router, wmatic, hmatic, true)
+        console.log(keeper.address)
+        keepers.push(keeper)
+
+        console.log("adding 1 bamm")
+        await keeper.addBamm(bamm)
+
+        console.log("setting min profit to 100000000")
+        await keeper.setMinProfitInUSD("1000000000000000")
+
+        console.log("set max attempts to 3")
+        await keeper.setMaxQtyAttempts(3)
+
+        console.log("trying to find smallest qty")
+        const res = await keeper.findSmallestQty.call({gas: 100000000})
+        console.log({res})        
+      }
+
+      console.log({keepers})
+/*      
+      console.log("calling upkeep")
+      const resUp = await keeper.checkUpkeep.call("0x",{gas: 100000000})
+      console.log({resUp})
+      console.log("calling perform")
+      await keeper.performUpkeep(resUp.performData)
+      console.log("done")
+*/
+
+    })    
+
+    it("Arb", async () => {
       
       console.log("deploying keeper")
       const keeper = await Keeper.new()

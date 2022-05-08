@@ -44,11 +44,35 @@ interface SushiRouterLike {
         returns (uint[] memory amounts);    
 }
 
+interface SushiRouterReferrerLike {
+    function swapExactTokensForTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline,
+        address referrer
+    ) external returns (uint[] memory amounts);
+
+    function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline, address referrer)
+        external
+        payable
+        returns (uint[] memory amounts);    
+}
+
 contract FlashArb {
-    SushiRouterLike constant SUSHI_ROUTER = SushiRouterLike(0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506);
-    address constant WMATIC = address(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
-    address constant H_MATIC = address(0xEbd7f3349AbA8bB15b897e03D6c1a4Ba95B55e31);
+    address immutable SUSHI_ROUTER;// = SushiRouterLike(0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506);
+    address immutable WMATIC;// = address(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
+    address immutable H_MATIC;// = address(0xEbd7f3349AbA8bB15b897e03D6c1a4Ba95B55e31);
+    bool immutable refferer;
     
+    constructor(address sushiRouter, address wmatic, address hMatic, bool hasRefferer) public {
+        SUSHI_ROUTER = sushiRouter;
+        WMATIC = wmatic;
+        H_MATIC = hMatic;
+        refferer = hasRefferer;
+    }
+
     function dumpOnSushi(address src, uint srcAmount, address dest) public {
         address[] memory path = new address[](3);
         path[0] = src;
@@ -56,7 +80,8 @@ contract FlashArb {
         path[2] = dest;
 
         IERC20(src).approve(address(SUSHI_ROUTER), srcAmount);
-        SUSHI_ROUTER.swapExactTokensForTokens(srcAmount, 1, path, address(this), now + 1);
+        if(refferer) SushiRouterReferrerLike(SUSHI_ROUTER).swapExactTokensForTokens(srcAmount, 1, path, address(this), now + 1, msg.sender);
+        else SushiRouterLike(SUSHI_ROUTER).swapExactTokensForTokens(srcAmount, 1, path, address(this), now + 1);
     }
 
     function dumpMaticOnSushi(uint srcAmount, address dest) public {
@@ -64,7 +89,8 @@ contract FlashArb {
         path[0] = WMATIC;
         path[1] = dest;
 
-        SUSHI_ROUTER.swapExactETHForTokens.value(srcAmount)(1, path, address(this), now + 1);
+        if(refferer) SushiRouterReferrerLike(SUSHI_ROUTER).swapExactETHForTokens.value(srcAmount)(1, path, address(this), now + 1, msg.sender);
+        else SushiRouterLike(SUSHI_ROUTER).swapExactETHForTokens.value(srcAmount)(1, path, address(this), now + 1);
     }
 
     function bammFlashswap(address /*initiator*/, uint lusdAmount, uint /*returnAmount*/, bytes memory data) external {
@@ -133,9 +159,8 @@ contract FlashKeeper {
     uint public minProfitInUSD = 1e13;
 
     event KeepOperation(bool succ);
-
-    constructor() public {
-        arb = new FlashArb();
+    constructor(address sushiRouter, address wmatic, address hMatic, bool hasRefferer) public {
+        arb = new FlashArb(sushiRouter, wmatic, hMatic, hasRefferer);
         admin = msg.sender;
     }
 
