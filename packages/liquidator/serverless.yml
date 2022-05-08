@@ -1,4 +1,4 @@
-service: hundred-polygon
+service: hundred-iotex
 
 frameworkVersion: '2 || 3'
 
@@ -8,6 +8,8 @@ provider:
   runtime: nodejs12.x
   profile: bp-sls
   lambdaHashingVersion: 20201221
+  environment:
+    DAPP_BLOCKCHAIN: ${self:service}
   iam:
     role:
       statements: # permissions for all of your functions can be set here
@@ -18,7 +20,7 @@ provider:
 
 functions:
   liquidate:
-    handler: handler.liquidate_polygon
+    handler: handler.liquidate
     timeout: 900 # optional, in seconds, default is 6 max is 15minutes  
     events:
       - schedule: rate(10 minutes)      

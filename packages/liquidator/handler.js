@@ -1,7 +1,8 @@
 'use strict';
-const {runOnLambda} = require('./liquidator')
-const {runOnLambda: runOnLambdaPolygon} = require('./liquidator_generic')
+const {runOnLambda} = require('./liquidator_generic')
 const {runBKeeper} = require('./bKeeper')
+
+console.log('process.env.DAPP_BLOCKCHAIN: ' + process.env.DAPP_BLOCKCHAIN)
 
 module.exports.liquidate = async (event) => {
   try{
@@ -11,36 +12,6 @@ module.exports.liquidate = async (event) => {
       body: JSON.stringify(
         {
           message: 'liquidator runOnLambda executed successfully!',
-          input: event,
-        },
-        null,
-        2
-      ),
-    };
-  } catch (err){
-    console.error(err)
-    return {
-      statusCode: 500,
-      body: JSON.stringify(
-        {
-          message: err.message,
-          input: event,
-        },
-        null,
-        2
-      ),
-    };
-  }
-};
-
-module.exports.liquidate_polygon = async (event) => {
-  try{
-  await runOnLambdaPolygon()
-  return {
-      statusCode: 200,
-      body: JSON.stringify(
-        {
-          message: 'liquidator runOnLambdaPolygon executed successfully!',
           input: event,
         },
         null,
