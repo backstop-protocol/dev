@@ -1,4 +1,4 @@
-service: hundred-iotex
+service: hundred-fantom
 
 frameworkVersion: '2 || 3'
 
