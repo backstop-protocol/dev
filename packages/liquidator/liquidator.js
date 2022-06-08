@@ -1,6 +1,6 @@
 const Web3 = require("web3")
 const axios = require("axios")
-
+const {toWei} = Web3.utils
 const secret = require("./secret.json")
 const abi = require("./abi.json")
 const web3 = new Web3(secret.nodeEndPoint)
@@ -98,7 +98,17 @@ async function doLiquidate(user, bammAddress, ctoken, repayAmount) {
     web3.eth.accounts.wallet.add(account)
     
     const bammContract = new web3.eth.Contract(abi.BAMM, bammAddress)
-    await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853})
+    const gasPrice = await axios.get("https://gftm.blockscan.com/gasapi.ashx?apikey=key&method=pendingpooltxgweidata")
+    .then(({data}) => {
+        const gasPriceGwei = data.result.standardgaspricegwei.toString()
+        return toWei(gasPriceGwei, 'gwei')
+    })
+    .catch(err => {
+        console.error(err)
+        return null
+    })
+
+    await bammContract.methods.liquidateBorrow(user, repayAmount, ctoken).send({from: account.address, gas:3120853, gasPrice })
 }
 
 async function run() {
