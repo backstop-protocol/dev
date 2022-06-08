@@ -1,0 +1,30 @@
+service: hundred-fantom-generic
+
+frameworkVersion: '2 || 3'
+
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  profile: bp-sls
+  lambdaHashingVersion: 20201221
+  iam:
+    role:
+      statements: # permissions for all of your functions can be set here
+        - Effect: Allow
+          Action: # Gives permission to DynamoDB tables in a specific region
+            - s3:*
+          Resource: '*'
+
+functions:
+  liquidate:
+    handler: handler.liquidate
+    timeout: 900 # optional, in seconds, default is 6 max is 15minutes  
+    events:
+      - schedule: rate(10 minutes)      
+  bKeeper:
+    handler: handler.bKeeper
+    timeout: 900 # optional, in seconds, default is 6 max is 15minutes  
+    events:
+      - schedule: rate(10 minutes)
+
