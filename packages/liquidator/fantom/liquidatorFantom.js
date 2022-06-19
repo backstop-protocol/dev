@@ -1,11 +1,11 @@
 const Web3 = require("web3")
 const axios = require("axios")
 const {toWei} = Web3.utils
-const secret = require("../secret.json")
+const secret = require("./secret.json")
 const configJson = require("./fantomConfig.json")
-const abi = require("../abi.json")
+const abi = require("./abi.json")
 const web3 = new Web3(secret.nodeEndPoint)
-const {uploadJsonFile} = require("../s3-client")
+const {uploadJsonFile} = require("./s3-client")
 
 
 const fileName = configJson.fileName

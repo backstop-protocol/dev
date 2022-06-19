@@ -1,8 +1,8 @@
 {
     "fileName": "liquidatorStoredData_hundred_fantom_genric.json",
-    "comptrollerAddress" : "0xedba32185baf7fef9a26ca567bc4a6cbe426e499",
+    "comptrollerAddress" : "0x0f390559f258eb8591c8e31cf0905e97cf36ace2",
     "helperAddress" : "0x8c781F9bD8e65375b047b51AA2fbBc47043295f5",
-    "startBlock" : 26300341,
+    "startBlock" : 20683828,
     "bammAddresses" : ["0xD3f08B1c4861dacC3ce539B9F4748AA25dCb72aE", "0x7605aaA45344F91315E0C596Ab679159784F8b7b", "0x3A87b540F7EaeC7b20902039818B5Ea78F984305", "0x1346e106b4E2558DAACd2E8207505ce7E31e05CA"],
     "keeperAddress" : "0x09653B7B758904c971a8b764F72abbEE42860fB8"
 }
