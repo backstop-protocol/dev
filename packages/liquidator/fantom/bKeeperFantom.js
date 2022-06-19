@@ -1,8 +1,8 @@
 const Web3 = require("web3")
 const {toWei} = Web3.utils
 
-const secret = require("../secret.json")
-const abi = require("../abi.json")
+const secret = require("./secret.json")
+const abi = require("./abi.json")
 const config = require("./fantomConfig.json")
 
 const web3 = new Web3(secret.nodeEndPoint)
