@@ -3,7 +3,6 @@
 pragma solidity 0.6.11;
 
 import "./../StabilityPool.sol";
-import "./CropJoinAdapter.sol";
 import "./PriceFormula.sol";
 import "./../Interfaces/IPriceFeed.sol";
 import "./../Dependencies/IERC20.sol";
@@ -12,13 +11,14 @@ import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
 
 
-contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
+contract BAMM is PriceFormula, Ownable {
     using SafeMath for uint256;
 
     AggregatorV3Interface public immutable priceAggregator;
     AggregatorV3Interface public immutable lusd2UsdPriceAggregator;    
     IERC20 public immutable LUSD;
     StabilityPool immutable public SP;
+    address immutable public chicken;
 
     address payable public immutable feePool;
     uint public constant MAX_FEE = 100; // 1%
@@ -34,9 +34,14 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
     uint constant public PRECISION = 1e18;
 
     event ParamsSet(uint A, uint fee);
-    event UserDeposit(address indexed user, uint lusdAmount, uint numShares);
-    event UserWithdraw(address indexed user, uint lusdAmount, uint ethAmount, uint numShares);
+    event UserDeposit(address indexed user, uint lusdAmount);
+    event UserWithdraw(address indexed user, uint lusdAmount);
     event RebalanceSwap(address indexed user, uint lusdAmount, uint ethAmount, uint timestamp);
+
+    modifier onlyChicken() {
+        require(msg.sender == chicken, "BAMM: caller is not the chicken");
+        _;
+    }
 
     constructor(
         address _priceAggregator,
@@ -46,14 +51,18 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         address _LQTY,
         uint _maxDiscount,
         address payable _feePool,
-        address _fronEndTag)
+        address _fronEndTag,
+        address _chicken,
+        address _lqtySeller)
         public
-        CropJoinAdapter(_LQTY)
     {
         priceAggregator = AggregatorV3Interface(_priceAggregator);
         lusd2UsdPriceAggregator = AggregatorV3Interface(_lusd2UsdPriceAggregator);
         LUSD = IERC20(_LUSD);
         SP = StabilityPool(_SP);
+        chicken = _chicken;
+
+        require(IERC20(_LQTY).approve(_lqtySeller, uint(-1)), "lqty allowance failed");
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
@@ -109,54 +118,22 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         return chainlinkLatestAnswer.mul(PRECISION) / chainlinkFactor;
     }
 
-    function deposit(uint lusdAmount) external {        
-        // update share
-        uint lusdValue = SP.getCompoundedLUSDDeposit(address(this));
-        uint ethValue = SP.getDepositorETHGain(address(this)).add(address(this).balance);
-
-        uint price = fetchPrice();
-        require(ethValue == 0 || price > 0, "deposit: chainlink is down");
-
-        uint totalValue = lusdValue.add(ethValue.mul(price) / PRECISION);
-
-        // this is in theory not reachable. if it is, better halt deposits
-        // the condition is equivalent to: (totalValue = 0) ==> (total = 0)
-        require(totalValue > 0 || total == 0, "deposit: system is rekt");
-
-        uint newShare = PRECISION;
-        if(total > 0) newShare = total.mul(lusdAmount) / totalValue;
-
+    function deposit(uint lusdAmount) external onlyChicken {        
         // deposit
         require(LUSD.transferFrom(msg.sender, address(this), lusdAmount), "deposit: transferFrom failed");
         SP.provideToSP(lusdAmount, frontEndTag);
 
-        // update LP token
-        mint(msg.sender, newShare);
-
-        emit UserDeposit(msg.sender, lusdAmount, newShare);        
+        emit UserDeposit(msg.sender, lusdAmount);
     }
 
-    function withdraw(uint numShares) external {
-        uint lusdValue = SP.getCompoundedLUSDDeposit(address(this));
-        uint ethValue = SP.getDepositorETHGain(address(this)).add(address(this).balance);
-
-        uint lusdAmount = lusdValue.mul(numShares).div(total);
-        uint ethAmount = ethValue.mul(numShares).div(total);
-
+    function withdraw(uint lusdAmount, address to) external onlyChicken {
         // this withdraws lusd, lqty, and eth
         SP.withdrawFromSP(lusdAmount);
 
-        // update LP token
-        burn(msg.sender, numShares);
-
         // send lusd and eth
-        if(lusdAmount > 0) LUSD.transfer(msg.sender, lusdAmount);
-        if(ethAmount > 0) {
-            (bool success, ) = msg.sender.call{ value: ethAmount }(""); // re-entry is fine here
-            require(success, "withdraw: sending ETH failed");
-        }
+        if(lusdAmount > 0) LUSD.transfer(to, lusdAmount);
 
-        emit UserWithdraw(msg.sender, lusdAmount, ethAmount, numShares);            
+        emit UserWithdraw(to, lusdAmount);            
     }
 
     function addBps(uint n, int bps) internal pure returns(uint) {
@@ -249,6 +226,21 @@ contract BAMM is CropJoinAdapter, PriceFormula, Ownable {
         (uint ethQty, ) = getSwapEthAmount(srcQty);
         return ethQty.mul(PRECISION) / srcQty;
     }
+
+    function getLUSDValue()
+        external view
+        returns(uint totalLUSDValue, uint lusdBalance, uint ethLUSDValue)
+    {
+        lusdBalance = SP.getCompoundedLUSDDeposit(address(this));
+        uint ethBalance  = SP.getDepositorETHGain(address(this)).add(address(this).balance);
+
+        uint eth2usdPrice = fetchPrice();
+        if(eth2usdPrice == 0 && ethBalance > 0) return (0, lusdBalance, 0); // chainlink is down
+
+        ethLUSDValue = ethBalance.mul(eth2usdPrice) / PRECISION;
+        totalLUSDValue = lusdBalance.add(ethLUSDValue);
+    }
+
 
     receive() external payable {}
 }
