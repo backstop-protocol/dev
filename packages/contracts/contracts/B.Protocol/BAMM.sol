@@ -215,6 +215,12 @@ contract BAMM is PriceFormula, Ownable {
         return ethAmount;
     }
 
+
+    // callable by anyone, designed to be called by the lqty seller
+    function compound(uint lusdAmount) public {
+        SP.provideToSP(lusdAmount, frontEndTag);
+    }    
+
     // kyber network reserve compatible function
     function trade(
         IERC20 /* srcToken */,

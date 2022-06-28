@@ -10,6 +10,9 @@ import "./../Dependencies/SafeMath.sol";
 import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
 
+interface IGemOwner {
+    function compound(uint lusdAmount) external;
+}
 
 contract GemSeller is PriceFormula, Ownable {
     using SafeMath for uint256;
@@ -184,8 +187,14 @@ contract GemSeller is PriceFormula, Ownable {
 
         require(gemAmount >= minGemReturn, "swap: low return");
 
+        // transfer to gem owner and deposit lusd into the stability pool
         require(LUSD.transferFrom(msg.sender, gemOwner, lusdAmount.sub(feeAmount)), "swap: LUSD transfer failed");
+        IGemOwner(gemOwner).compound(lusdAmount.sub(feeAmount));
+
+        // transfer fees to fee pool
         if(feeAmount > 0) require(LUSD.transferFrom(msg.sender, feePool, feeAmount), "swap: LUSD fee transfer failed");
+
+        // send gem return to buyer
         require(gem.transferFrom(gemOwner, dest, gemAmount), "swap: LQTY transfer failed");
 
         emit RebalanceSwap(msg.sender, lusdAmount, gemAmount, now);

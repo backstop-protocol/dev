@@ -4,6 +4,8 @@ const th = testHelpers.TestHelper
 const dec = th.dec
 const toBN = th.toBN
 
+const TroveManagerTester = artifacts.require("TroveManagerTester")
+const LUSDToken = artifacts.require("LUSDToken")
 const MockToken = artifacts.require("ERC20Mock.sol")
 const GemSeller = artifacts.require("GemSeller.sol")
 const BAMM = artifacts.require("BAMM.sol")
@@ -12,7 +14,7 @@ const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
 const ZERO_ADDRESS = th.ZERO_ADDRESS
 
 
-contract('BAMM', async accounts => {
+contract('Gem Seller', async accounts => {
   const [owner,
     defaulter_1, defaulter_2, defaulter_3,
     whale,
@@ -49,7 +51,62 @@ contract('BAMM', async accounts => {
     })
 
     beforeEach(async () => {
+      // setup bamm
+      contracts = await deploymentHelper.deployLiquityCore()
+      contracts.troveManager = await TroveManagerTester.new()
+      contracts.lusdToken = await LUSDToken.new(
+        contracts.troveManager.address,
+        contracts.stabilityPool.address,
+        contracts.borrowerOperations.address
+      )
+      const LQTYContracts = await deploymentHelper.deployLQTYContracts(bountyAddress, lpRewardsAddress, multisig)
 
+      priceFeed = contracts.priceFeedTestnet
+      lusdToken = contracts.lusdToken
+      sortedTroves = contracts.sortedTroves
+      troveManager = contracts.troveManager
+      activePool = contracts.activePool
+      stabilityPool = contracts.stabilityPool
+      defaultPool = contracts.defaultPool
+      borrowerOperations = contracts.borrowerOperations
+      hintHelpers = contracts.hintHelpers
+
+      lqtyToken = LQTYContracts.lqtyToken
+      communityIssuance = LQTYContracts.communityIssuance
+
+      await deploymentHelper.connectLQTYContracts(LQTYContracts)
+      await deploymentHelper.connectCoreContracts(contracts, LQTYContracts)
+      await deploymentHelper.connectLQTYContractsToCore(LQTYContracts, contracts)
+
+      // Register 3 front ends
+      //await th.registerFrontEnds(frontEnds, stabilityPool)
+
+      // deploy BAMM
+      chainlink = await ChainlinkTestnet.new(priceFeed.address)
+      lusdChainlink = await ChainlinkTestnet.new(ZERO_ADDRESS)
+
+      const kickbackRate_F1 = toBN(dec(5, 17)) // F1 kicks 50% back to depositor
+      await stabilityPool.registerFrontEnd(kickbackRate_F1, { from: frontEnd_1 })
+
+      chicken = defaulter_3
+
+      lqty = await MockToken.new("LQTY", "LQTY", whale, dec(10, 18 + 6))
+
+      bamm = await BAMM.new(chainlink.address,
+                            lusdChainlink.address,
+                            stabilityPool.address,
+                            lusdToken.address,
+                            lqty.address,
+                            400,
+                            feePool,
+                            frontEnd_1,
+                            chicken,
+                            {from: bammOwner})
+
+      await lusdChainlink.setPrice(dec(1,18)) // 1 LUSD = 1 USD      
+
+      
+      // setup seller
       eth2UsdPriceFeed = await ChainlinkTestnet.new(ZERO_ADDRESS)
       lqty2EthPriceFeed = await ChainlinkTestnet.new(ZERO_ADDRESS)
       lusd2UsdPriceFeed = await ChainlinkTestnet.new(ZERO_ADDRESS)
@@ -59,36 +116,22 @@ contract('BAMM', async accounts => {
       await lusd2UsdPriceFeed.setPrice(dec(101, 16)) // 1.01
 
       lqty2LusdPrice = dec(104234851, 10) // 1.04234851
-
-      
-      lusd = await MockToken.new("LUSD", "LUSD", whale, dec(10, 18 + 6))
-      lqty = await MockToken.new("LQTY", "LQTY", whale, dec(10, 18 + 6))
-      
+   
       sellerOwner = alice
 
-      const bammContract = await BAMM.new(eth2UsdPriceFeed.address,
-                                          lusd2UsdPriceFeed.address,
-                                          sellerOwner,
-                                          lusd.address,
-                                          lqty.address,
-                                          400,
-                                          feePool,
-                                          sellerOwner,
-                                          sellerOwner,
-                                          {from: sellerOwner})
-      bamm = bammContract.address
+      lusd = lusdToken
 
       seller = await GemSeller.new(lqty2EthPriceFeed.address,
                                     eth2UsdPriceFeed.address,
                                     lusd2UsdPriceFeed.address,
                                     lusd.address,
                                     lqty.address,
-                                    bamm,
+                                    bamm.address,
                                     virtualLusdImbalance,
                                     400,
                                     feePool, {from: sellerOwner})
       
-      await bammContract.setSeller(seller.address, {from: sellerOwner})
+      await bamm.setSeller(seller.address, {from: bammOwner})
     })
 
     it('test set params sad path', async () => {
@@ -109,17 +152,6 @@ contract('BAMM', async accounts => {
                    dec(1, 18))
     })
 
-    it('test price fetchers', async () => {
-      assert.equal(web3.utils.fromWei(await seller.fetchGem2EthPrice()), "0.00087731")
-      assert.equal(web3.utils.fromWei(await seller.fetchEthPrice()), "1200")
-
-      assert.equal((await seller.gemToLUSD(dec(1, 18), dec(7,18), dec(1200, 18))).toString(),
-                   dec(7 * 1200, 18))
-
-      assert.equal((await seller.LUSDToGem(dec(7 * 1200, 18), dec(7,18), dec(1200, 18))).toString(),
-                   dec(1, 18))
-    })    
-
     it('test compensateForLusdDeviation', async () => {
       assert.equal((await seller.compensateForLusdDeviation(dec(1,18))).toString(),
                    dec(101, 16))
@@ -132,7 +164,7 @@ contract('BAMM', async accounts => {
       const lusdQty = dec(1000, 18)
 
       // send 10k lqty to bamm
-      await lqty.transfer(bamm, lqtyBalance, {from: whale})
+      await lqty.transfer(bamm.address, lqtyBalance, {from: whale})
 
       // set fees to 0.5%
       await seller.setParams(100, 50,{from: sellerOwner})
@@ -157,13 +189,14 @@ contract('BAMM', async accounts => {
       const lusdQty = dec(1000, 18)
 
       // send lusd to alice
-      await lusd.transfer(alice, lusdQty, {from: whale})
+      await openTrove({ extraLUSDAmount: toBN(lusdQty), ICR: toBN(dec(2, 18)), extraParams: { from: alice } })      
+      //await lusd.transfer(alice, lusdQty, {from: whale})
       
       // give allowance to seller
       await lusd.approve(seller.address, lusdQty, {from: alice})
 
       // send 10k lqty to bamm
-      await lqty.transfer(bamm, lqtyBalance, {from: whale})
+      await lqty.transfer(bamm.address, lqtyBalance, {from: whale})
 
       // set fees to 0.5%
       await seller.setParams(100, 50,{from: sellerOwner})
@@ -181,10 +214,10 @@ contract('BAMM', async accounts => {
       assert.equal((await lqty.balanceOf(carol)).toString(), result.gemAmount.toString())
 
       // check bamm lusd balance increased
-      assert.equal((await lusd.balanceOf(bamm)).toString(), toBN(lusdQty).sub(toBN(result.feeLusdAmount)).toString())
+      assert.equal((await stabilityPool.getCompoundedLUSDDeposit(bamm.address)).toString(), toBN(lusdQty).sub(toBN(result.feeLusdAmount)).toString())
       
       // check bamm lqty balance decreased as expected
-      assert.equal((await lqty.balanceOf(bamm)).toString(), toBN(lqtyBalance).sub(result.gemAmount).toString())      
+      assert.equal((await lqty.balanceOf(bamm.address)).toString(), toBN(lqtyBalance).sub(result.gemAmount).toString())      
     })   
     
 
