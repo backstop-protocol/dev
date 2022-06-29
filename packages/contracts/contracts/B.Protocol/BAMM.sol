@@ -208,7 +208,12 @@ contract BAMM is PriceFormula, GemSellerController {
     // callable by anyone, designed to be called by the lqty seller
     function compound(uint lusdAmount) public {
         SP.provideToSP(lusdAmount, frontEndTag);
-    }    
+    }
+
+    // callable by anyone - in case organic user activity didn't harvest lqty
+    function harvest() public {
+        SP.withdrawFromSP(0);
+    }
 
     // kyber network reserve compatible function
     function trade(
