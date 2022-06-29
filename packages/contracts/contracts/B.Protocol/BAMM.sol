@@ -4,20 +4,19 @@ pragma solidity 0.6.11;
 
 import "./../StabilityPool.sol";
 import "./PriceFormula.sol";
+import "./GemSellerController.sol";
 import "./../Interfaces/IPriceFeed.sol";
 import "./../Dependencies/IERC20.sol";
 import "./../Dependencies/SafeMath.sol";
-import "./../Dependencies/Ownable.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
 
 
-contract BAMM is PriceFormula, Ownable {
+contract BAMM is PriceFormula, GemSellerController {
     using SafeMath for uint256;
 
     AggregatorV3Interface public immutable priceAggregator;
     AggregatorV3Interface public immutable lusd2UsdPriceAggregator;
     IERC20 public immutable LUSD;
-    IERC20 public immutable LQTY;    
     StabilityPool immutable public SP;
     address immutable public chicken;
 
@@ -32,15 +31,12 @@ contract BAMM is PriceFormula, Ownable {
 
     address public immutable frontEndTag;
 
-    bool public sellerSet = false;
-
     uint constant public PRECISION = 1e18;
 
     event ParamsSet(uint A, uint fee);
     event UserDeposit(address indexed user, uint lusdAmount);
     event UserWithdraw(address indexed user, uint lusdAmount);
     event RebalanceSwap(address indexed user, uint lusdAmount, uint ethAmount, uint timestamp);
-    event LqtySellerSet(address seller);
 
     modifier onlyChicken() {
         require(msg.sender == chicken, "BAMM: caller is not the chicken");
@@ -56,27 +52,20 @@ contract BAMM is PriceFormula, Ownable {
         uint _maxDiscount,
         address payable _feePool,
         address _fronEndTag,
-        address _chicken)
+        address _chicken,
+        uint _timelockDuration)
+        GemSellerController(_LQTY, _timelockDuration)
         public
     {
         priceAggregator = AggregatorV3Interface(_priceAggregator);
         lusd2UsdPriceAggregator = AggregatorV3Interface(_lusd2UsdPriceAggregator);
         LUSD = IERC20(_LUSD);
-        LQTY = IERC20(_LQTY);
         SP = StabilityPool(_SP);
         chicken = _chicken;
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
         frontEndTag = _fronEndTag;
-    }
-
-    function setSeller(address seller) external onlyOwner {
-        require(! sellerSet, "setSeller: seller alreay set");
-        require(IERC20(LQTY).approve(seller, uint(-1)), "setSeller: lqty allowance failed");
-
-        sellerSet = true;
-        emit LqtySellerSet(seller);
     }
 
     function setParams(uint _A, uint _fee) external onlyOwner {

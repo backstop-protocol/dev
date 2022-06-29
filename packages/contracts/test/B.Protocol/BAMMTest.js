@@ -116,6 +116,7 @@ contract('BAMM', async accounts => {
                             feePool,
                             frontEnd_1,
                             chicken,
+                            14 * 24 * 60 * 60,
                             {from: bammOwner})
 
       await bamm.setSeller(lqtySeller, {from: bammOwner})
@@ -500,8 +501,28 @@ contract('BAMM', async accounts => {
       assert.equal(lusdValue.ethLUSDValue.toString(), expectedETHValue.toString())            
     })
 
-    it('try to setup lqty seller again', async () => {
-      await assertRevert(bamm.setSeller(alice, {from: bammOwner}), 'setSeller: seller alreay set')
+    it('setSeller sad paths', async () => {
+      // call without set pending
+      await assertRevert(bamm.setSeller(alice, {from: bammOwner}), 'setSeller: ! pending')
+
+      // call from non owner
+      const nonOwner = alice
+      await assertRevert(bamm.setSeller(alice, {from: nonOwner}), 'Ownable: caller is not the owner')
+      await assertRevert(bamm.setPendingSeller(bob, {from: nonOwner}), 'Ownable: caller is not the owner')
+      
+      // set new pending, and then call ahead of time, and with wrong seller
+      const pendingSeller = carol
+      const nonPendingSeller = defaulter_3
+      await bamm.setPendingSeller(pendingSeller, {from: bammOwner})
+
+      // ahead of time
+      await assertRevert(bamm.setSeller(pendingSeller, {from: bammOwner}), 'setSeller: too early')
+      
+      // move fwd 1 month
+      await th.fastForwardTime(30 * 24 * 60 * 60, web3.currentProvider)
+
+      // set wrong seller
+      await assertRevert(bamm.setSeller(nonPendingSeller, {from: bammOwner}), 'setSeller: ! pending')    
     })    
   })
 })
@@ -537,7 +558,7 @@ async function assertRevert(txPromise, message = undefined) {
     assert.include(err.message, "revert")
     
     if (message) {
-       assert.include(err.message, message)
+       assert.include(err.message, message, "actual: " + err.message + " ### expected: " + message)
     }
   }
 }

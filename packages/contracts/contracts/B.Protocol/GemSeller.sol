@@ -26,7 +26,7 @@ contract GemSeller is PriceFormula, Ownable {
     uint public immutable lusdVirtualBalance;
     address public immutable feePool;
 
-    uint public constant MAX_FEE = 100; // 1%
+    uint public constant MAX_FEE = 1000; // 10%
     uint public fee = 0; // fee in bps
     uint public A = 20;
     uint public constant MIN_A = 20;

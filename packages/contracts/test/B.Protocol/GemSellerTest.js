@@ -101,6 +101,7 @@ contract('Gem Seller', async accounts => {
                             feePool,
                             frontEnd_1,
                             chicken,
+                            14 * 24 * 60 * 60,
                             {from: bammOwner})
 
       await lusdChainlink.setPrice(dec(1,18)) // 1 LUSD = 1 USD      
@@ -137,7 +138,7 @@ contract('Gem Seller', async accounts => {
     it('test set params sad path', async () => {
       await assertRevert(seller.setParams(210, 100, {from: sellerOwner}), 'setParams: A too big')
       await assertRevert(seller.setParams(9, 100, {from: sellerOwner}), 'setParams: A too small')
-      await assertRevert(seller.setParams(10, 101, {from: sellerOwner}), 'setParams: fee is too big')             
+      await assertRevert(seller.setParams(10, 1001, {from: sellerOwner}), 'setParams: fee is too big')             
       await assertRevert(seller.setParams(20, 100, {from: B}), 'Ownable: caller is not the owner')      
     })
 
@@ -190,7 +191,6 @@ contract('Gem Seller', async accounts => {
 
       // send lusd to alice
       await openTrove({ extraLUSDAmount: toBN(lusdQty), ICR: toBN(dec(2, 18)), extraParams: { from: alice } })      
-      //await lusd.transfer(alice, lusdQty, {from: whale})
       
       // give allowance to seller
       await lusd.approve(seller.address, lusdQty, {from: alice})
@@ -203,6 +203,10 @@ contract('Gem Seller', async accounts => {
 
       // check price for 1k lusd
       const result = await seller.getSwapGemAmount(lusdQty)
+
+      // do the swap and expect high return
+      const highReturn = toBN(result.gemAmount).add(toBN(1))
+      await assertRevert(seller.swap(lusdQty, highReturn, carol, {from: alice}), "swap: low return")
 
       // do the swap
       await seller.swap(lusdQty, 1, carol, {from: alice})
@@ -220,7 +224,79 @@ contract('Gem Seller', async accounts => {
       assert.equal((await lqty.balanceOf(bamm.address)).toString(), toBN(lqtyBalance).sub(result.gemAmount).toString())      
     })   
     
+    it('test change seller - cannot swap from old seller', async () => {
+      // set pending dummy new seller
+      await bamm.setPendingSeller(bob, {from: bammOwner})
+      // move fwd 1 month
+      await th.fastForwardTime(30 * 24 * 60 * 60, web3.currentProvider)
+      // set dummy new seller
+      await bamm.setSeller(bob, {from: bammOwner})   
 
+      const lqtyBalance = dec(10000, 18)
+      const lusdQty = dec(1000, 18)
+  
+      // send lusd to alice
+      await openTrove({ extraLUSDAmount: toBN(lusdQty), ICR: toBN(dec(2, 18)), extraParams: { from: alice } })      
+        
+      // give allowance to seller
+      await lusd.approve(seller.address, lusdQty, {from: alice})
+  
+      // send 10k lqty to bamm
+      await lqty.transfer(bamm.address, lqtyBalance, {from: whale})
+        
+      // do the swap and fail
+      await assertRevert(seller.swap(lusdQty, 1, carol, {from: alice}), "ERC20: transfer amount exceeds allowance")
+    })
+
+    it('test change seller - swap from new seller', async () => {
+      // deploy new seller
+      const seller2 = await GemSeller.new(lqty2EthPriceFeed.address,
+        eth2UsdPriceFeed.address,
+        lusd2UsdPriceFeed.address,
+        lusd.address,
+        lqty.address,
+        bamm.address,
+        virtualLusdImbalance,
+        400,
+        feePool, {from: sellerOwner})
+
+      // set pending new seller
+      await bamm.setPendingSeller(seller2.address, {from: bammOwner})
+      // move fwd 1 month
+      await th.fastForwardTime(30 * 24 * 60 * 60, web3.currentProvider)
+      // set new seller
+      await bamm.setSeller(seller2.address, {from: bammOwner})   
+
+      const lqtyBalance = dec(10000, 18)
+      const lusdQty = dec(1000, 18)
+  
+      // send lusd to alice
+      await openTrove({ extraLUSDAmount: toBN(lusdQty), ICR: toBN(dec(2, 18)), extraParams: { from: alice } })      
+        
+      // give allowance to seller
+      await lusd.approve(seller2.address, lusdQty, {from: alice})
+  
+      // send 10k lqty to bamm
+      await lqty.transfer(bamm.address, lqtyBalance, {from: whale})
+        
+      // check price for 1k lusd
+      const result = await seller.getSwapGemAmount(lusdQty)
+
+      // do the swap
+      await seller2.swap(lusdQty, 1, carol, {from: alice})
+
+      // check fees went to pool
+      assert.equal((await lusd.balanceOf(feePool)).toString(), result.feeLusdAmount.toString())
+
+      // check lqty went to carol
+      assert.equal((await lqty.balanceOf(carol)).toString(), result.gemAmount.toString())
+
+      // check bamm lusd balance increased
+      assert.equal((await stabilityPool.getCompoundedLUSDDeposit(bamm.address)).toString(), toBN(lusdQty).sub(toBN(result.feeLusdAmount)).toString())
+      
+      // check bamm lqty balance decreased as expected
+      assert.equal((await lqty.balanceOf(bamm.address)).toString(), toBN(lqtyBalance).sub(result.gemAmount).toString())      
+    })
   })
 })
 
@@ -237,7 +313,7 @@ async function assertRevert(txPromise, message = undefined) {
     assert.include(err.message, "revert")
     
     if (message) {
-       assert.include(err.message, message)
+       assert.include(err.message, message, "actual: " + err.message + " ### expected: " + message)
     }
   }
 }
