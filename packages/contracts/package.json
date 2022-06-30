@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@uniswap/v3-periphery": "^1.4.1",
     "bn.js": "^5.2.1",
     "decimal.js": "^10.2.0",
     "eth-mutants": "^0.1.1",
