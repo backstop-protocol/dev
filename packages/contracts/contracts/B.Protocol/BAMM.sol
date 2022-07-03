@@ -97,7 +97,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         emit ParamsSet(_A, _fee, _callerFee);
     }
 
-    function addCollateral(ICToken ctoken, AggregatorV3Interface feed) external onlyOwner {
+    function addCollateral(ICToken ctoken, AggregatorV3Interface feed) public virtual onlyOwner {
         IERC20 token = IERC20(address(ctoken));
 
         // validations
@@ -113,7 +113,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
         cTokens[address(ctoken)] = true;        
     }
 
-    function removeCollateral(ICToken ctoken) external onlyOwner {
+    function removeCollateral(ICToken ctoken) public virtual onlyOwner {
         IERC20 token = IERC20(address(ctoken));
 
         for(uint i = 0 ; i < collaterals.length ; i++) {
