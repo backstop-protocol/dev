@@ -100,9 +100,10 @@ contract('Gem Seller', async accounts => {
                             400,
                             feePool,
                             frontEnd_1,
-                            chicken,
                             14 * 24 * 60 * 60,
                             {from: bammOwner})
+
+      await bamm.setChicken(chicken, {from: bammOwner})                            
 
       await lusdChainlink.setPrice(dec(1,18)) // 1 LUSD = 1 USD      
 

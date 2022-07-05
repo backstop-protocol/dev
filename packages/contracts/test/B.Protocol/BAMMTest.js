@@ -115,11 +115,11 @@ contract('BAMM', async accounts => {
                             400,
                             feePool,
                             frontEnd_1,
-                            chicken,
                             14 * 24 * 60 * 60,
                             {from: bammOwner})
 
       await bamm.setSeller(lqtySeller, {from: bammOwner})
+      await bamm.setChicken(chicken, {from: bammOwner})
 
       await lusdChainlink.setPrice(dec(1,18)) // 1 LUSD = 1 USD
     })
@@ -454,6 +454,12 @@ contract('BAMM', async accounts => {
       assert.equal(priceWithFee.ethAmount.toString(), expectedReturn190.mul(toBN(100)).div(toBN(100 * 105)).toString())
       assert.equal(priceWithFee.feeLusdAmount.toString(), toBN(lusdQty).div(toBN("100")).toString())            
     })    
+    
+    it('test set chicken sad path', async () => {
+      await assertRevert(bamm.setChicken(bob, {from: alice}), 'Ownable: caller is not the owner')
+      await assertRevert(bamm.setChicken(ZERO_ADDRESS, {from: bammOwner}), 'setChicken: null address')
+      await assertRevert(bamm.setChicken(bob, {from: bammOwner}), 'setChicken: already set')
+    })
     
     it('test set params sad path', async () => {
       await assertRevert(bamm.setParams(210, 100, {from: bammOwner}), 'setParams: A too big')

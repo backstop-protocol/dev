@@ -7,7 +7,7 @@ const toBN = th.toBN
 const getDifference = th.getDifference
 
 const UniV3Twap = artifacts.require("UniV3Twap.sol");
-const twapDuration = 60 // 10 seconds
+const twapDuration = 24 * 60 * 60 // 24 hours
 
 contract('PriceFormula tests', async accounts => {
   let twap
@@ -15,6 +15,7 @@ contract('PriceFormula tests', async accounts => {
   before(async () => {
     console.log("deploy twap")
     twap = await UniV3Twap.new(twapDuration)
+    console.log(twap.address)
   })
 
   // numbers here were taken from the return value of mainnet contract

@@ -18,7 +18,7 @@ contract BAMM is PriceFormula, GemSellerController {
     AggregatorV3Interface public immutable lusd2UsdPriceAggregator;
     IERC20 public immutable LUSD;
     StabilityPool immutable public SP;
-    address immutable public chicken;
+    address public chicken;
 
     address payable public immutable feePool;
     uint public constant MAX_FEE = 100; // 1%
@@ -33,6 +33,7 @@ contract BAMM is PriceFormula, GemSellerController {
 
     uint constant public PRECISION = 1e18;
 
+    event ChickenSet(address chicken);
     event ParamsSet(uint A, uint fee);
     event UserDeposit(address indexed user, uint lusdAmount);
     event UserWithdraw(address indexed user, uint lusdAmount);
@@ -52,7 +53,6 @@ contract BAMM is PriceFormula, GemSellerController {
         uint _maxDiscount,
         address payable _feePool,
         address _fronEndTag,
-        address _chicken,
         uint _timelockDuration)
         GemSellerController(_LQTY, _timelockDuration)
         public
@@ -61,11 +61,19 @@ contract BAMM is PriceFormula, GemSellerController {
         lusd2UsdPriceAggregator = AggregatorV3Interface(_lusd2UsdPriceAggregator);
         LUSD = IERC20(_LUSD);
         SP = StabilityPool(_SP);
-        chicken = _chicken;
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
         frontEndTag = _fronEndTag;
+    }
+
+    function setChicken(address _chicken) external onlyOwner {
+        require(_chicken != address(0), "setChicken: null address");
+        require(chicken == address(0), "setChicken: already set");
+
+        chicken = _chicken;
+
+        emit ChickenSet(_chicken);
     }
 
     function setParams(uint _A, uint _fee) external onlyOwner {
