@@ -39,6 +39,10 @@ contract ChainlinkTestnet {
         if(time == 0 ) timestamp = now;
         else timestamp = time;
     }
+
+    function latestAnswer() external view returns(int) {
+        return int(price);
+    }
 }
 
 contract FakePriceOracle {

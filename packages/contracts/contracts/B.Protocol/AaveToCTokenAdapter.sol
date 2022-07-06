@@ -95,24 +95,22 @@ contract AaveToCTokenAdapter is ICToken, Ownable {
     }
 
     function liquidateBorrow(address borrower, uint amount, address collateral) external override onlyOwner returns (uint) {        
-        address collateralUnderlying = address(AaveToCTokenAdapter(collateral).underlying());
+        address collateralUnderlying = address(IAToken(collateral).UNDERLYING_ASSET_ADDRESS());
         address debt = address(underlying());
-        uint debtToCover = amount;
-        bool receiveAToken = true;
 
         IERC20(debt).safeTransferFrom(msg.sender, address(this), amount);
         address pool = lendingPoolAddressesProvider.getLendingPool();
         IERC20(debt).safeApprove(pool, amount);
 
-        ILendingPool(pool).liquidationCall(collateralUnderlying, debt, borrower, debtToCover, receiveAToken);
+        ILendingPool(pool).liquidationCall(collateralUnderlying, debt, borrower, amount, true);
 
         // send collateral atoken to bamm
-        IERC20(AaveToCTokenAdapter(collateral).aToken()).safeTransfer(msg.sender, AaveToCTokenAdapter(collateral).balanceOf(address(this)));
+        IERC20(collateral).safeTransfer(msg.sender, IERC20(collateral).balanceOf(address(this)));
 
         return 0;
     }
 
-    function transfer(address to, uint amount) external returns (bool) {
+    function transfer(address to, uint amount) external onlyOwner returns (bool) {
         IERC20(aToken).safeTransferFrom(msg.sender, to, amount);
 
         return true;

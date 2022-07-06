@@ -9,6 +9,8 @@ const timeValues = testHelpers.TimeValues
 
 const CPriceFeed = artifacts.require("CPriceFeed.sol")
 const BAMM = artifacts.require("AaveBAMM.sol")
+const ForceEthSend = artifacts.require("ForceEthSend.sol")
+const MockAave = artifacts.require("MockAave.sol")
 const AaveToCToken = artifacts.require("AaveToCTokenAdapter.sol")
 const CollateralAdder = artifacts.require("CollateralAdder.sol")
 const MockToken = artifacts.require("MockToken")
@@ -38,82 +40,214 @@ contract('BAMM', async accounts => {
   const lendingPoolAddressesProvider = "0xd05e3E715d945B59290df0ae8eF85c1BdB684744"
   const aWMATIC = "0x8dF3aad3a84da6b69A4DA8aeC3eA40d9091B2Ac4"
   const aDAI = "0x27F8D03b3a2196956ED754baDc28D73be8830A6e"
+  const aUSDC = "0x1a13F4Ca1d028320A707D99520AbFefca3998b7F"
   const yaron = "0xDdA7F2654D85653C92513B58305348Da627C7cf0"
   const feePool = yaron
 
-  let aaveToCToken
-  let bamm
-  let aToken
+  const daiWhale = aDAI
+  const usdcWhale = aUSDC
+  const maticWhale = "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
+  const whale = yaron
 
-  describe("aave", async () => {
+  const daiAddress = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+  const usdcAddress = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+
+  let aaveToCToken
+  let cDAI
+  let bamm
+  let aUSDCToken
+  let oracle
+  let oracleOwner
+  let lendingPool
+  let daiPriceOracle
+  let usdc
+  let dai
+  let priceDai2UsdcFeed
+
+  describe("aave test", async () => {
 
     before(async () => {
-      //await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [yaron],})      
-      aaveToCToken = await AaveToCToken.new(aWMATIC, lendingPoolAddressesProvider, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      console.log("get lending pool and oracle")
+      const provider = await MockAave.at(lendingPoolAddressesProvider)
+      lendingPool = await MockAave.at(await provider.getLendingPool())
+      oracle = await MockAave.at(await provider.getPriceOracle())
+      oracleOwner = await oracle.owner()
+
+      console.log("impersonate accounts")
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [whale],})
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [daiWhale],})
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [usdcWhale],})      
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [maticWhale],})
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [oracleOwner],})
+
+      console.log("send ether to whales")
+      await web3.eth.sendTransaction({from: maticWhale, to: whale, value: toBN(dec(100, 18))})
+      await ForceEthSend.new(daiWhale, {from: maticWhale, value: dec(100, 18)})
+      await ForceEthSend.new(usdcWhale, {from: maticWhale, value: dec(100, 18)})
+      await ForceEthSend.new(oracleOwner, {from: maticWhale, value: dec(100, 18)})      
+      
+      console.log("send dai to whale")
+      dai = await MockToken.at(daiAddress)
+      await dai.transfer(whale, dec(1e6, 18), {from: daiWhale})
+
+      console.log("send usdc to whale")
+      usdc = await MockToken.at(usdcAddress)
+      await usdc.transfer(whale, dec(1e6, 6), {from: usdcWhale})      
+
+      console.log("deploy fake chainlink")
+      daiPriceOracle = await FakeChainlink.new()
+      console.log("set price of dai to the one of usdc")
+      await daiPriceOracle.setPrice(await oracle.getAssetPrice(usdcAddress))
+      console.log("set fake price oracle as official price")
+      await oracle.setAssetSources([daiAddress], [daiPriceOracle.address], {from: oracleOwner})
+
+
+      aaveToCToken = await AaveToCToken.new(aUSDC, lendingPoolAddressesProvider, {from: whale})
+      console.log("aaveToCToken", aaveToCToken.address)
       console.log("aave to c", aaveToCToken.address)
 
       bamm = await BAMM.new(aaveToCToken.address,
                             false,
                             400,
                             feePool,
-                            {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+                            {from: whale})
 
       console.log("bamm address", bamm.address)
 
-      await aaveToCToken.setBAMM(bamm.address, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      await aaveToCToken.setBAMM(bamm.address, {from: whale})
 
-      aToken = await MockToken.at(aWMATIC)      
+      aUSDCToken = await MockToken.at(aUSDC)
+      
+      console.log("Add cdai as collateral")
+      cDAI = await MockToken.at(aDAI) //*/await AaveToCToken.new(aDAI, lendingPoolAddressesProvider, {from: whale})
+      console.log((await cDAI.decimals()).toString())
+ 
+      // setup a price feed
+      console.log("setup price feed")
+      priceDai2UsdcFeed = await FakeChainlink.new({from: whale})
+      console.log("set price to 2")
+      await priceDai2UsdcFeed.setPrice(dec(2,18),{from: whale})
+      console.log("add collateral")
+      await bamm.addCollateral(cDAI.address, priceDai2UsdcFeed.address, {from: whale})
     })
 
     beforeEach(async () => {
 
     })
 
-    it("deposit aWMATIC", async () => {
-      const balance = toBN(await aToken.balanceOf(yaron)).div(toBN(2))
-      console.log("balance", balance.toString())
-      console.log("giving allowance")
-      await aToken.approve(aaveToCToken.address, balance, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+    it("deposit aUSDC", async () => {
+      const amount = toBN(dec(200, 6))
+      
+      console.log("give usdc allowance to lending pool")
+      await usdc.approve(lendingPool.address, amount, {from: whale})
+
+      console.log("deposit in lending pool")
+      await lendingPool.deposit(usdc.address, amount, whale, 0, {from: whale})
+
+      console.log("giving allowance of atokn")
+      await aUSDCToken.approve(aaveToCToken.address, amount, {from: whale})
 
       console.log("depositing")
-      await bamm.deposit(balance, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      const balanceBefore = await aUSDCToken.balanceOf(whale)
+      await bamm.deposit(amount, {from: whale})
+      const balanceAfter = await aUSDCToken.balanceOf(whale)
+
+      assert.equal((await aUSDCToken.balanceOf(bamm.address)).toString(), amount.toString())
+      assert.equal(toBN(balanceBefore).sub(balanceAfter).toString(), amount.toString())
 
       console.log("withdrawing")
-      await bamm.withdraw(toBN(balance).div(toBN(2)), {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      await bamm.withdraw(toBN(dec(1,18)).div(toBN(2)), {from: whale})
+      const balanceAfterWithdraw = await aUSDCToken.balanceOf(whale)
+
+      assert(in100WeiRadius((await aUSDCToken.balanceOf(bamm.address)).toString(), amount.div(toBN(2)).toString()))
+      assert(in100WeiRadius(toBN(balanceAfterWithdraw).sub(balanceAfter).toString(), amount.div(toBN(2)).toString()))
     })
 
-    it("setup aDAI as collateral", async () => {
-      const cDAI = await AaveToCToken.new(aDAI, lendingPoolAddressesProvider, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
-      const balance = toBN(await cDAI.balanceOf(yaron)).div(toBN(2))
-      console.log("give allowance to cDAI")
+    it("borrow usdc and get liquidated", async () => {
+      const joe = (await ForceEthSend.new(whale)).address // fresh new address
+      const daiAmount = dec(50, 18)
+
+      console.log("impersonate accounts")
+      await hre.network.provider.request({method: "hardhat_impersonateAccount",params: [joe],})
+
+      console.log("send ether to joe")
+      await web3.eth.sendTransaction({from: maticWhale, to: joe, value: toBN(dec(100, 18))})
+      
+      console.log("send dai to whale")
+      await dai.transfer(joe, daiAmount, {from: daiWhale})
+
+      console.log("give dai allowance to lending pool")
+      await dai.approve(lendingPool.address, daiAmount, {from: joe})
+      console.log("deposit into pool")
+      await lendingPool.deposit(dai.address, daiAmount, joe, 0, {from: joe})
+
+      const usdcDebtAmount = dec(10, 6)
+      await lendingPool.borrow(usdc.address, usdcDebtAmount, 2, 0, joe, {from: joe})
+
+      console.log("set dai price oracle to low number")
+      const lowPrice = toBN(await oracle.getAssetPrice(usdcAddress)).div(toBN(10))
+      await daiPriceOracle.setPrice(lowPrice.toString())
+
+      console.log("calling liquidate borrow")
+      const debtToLiquidate = dec(1, 6)
+      const expectedLiquidationProceeds = dec(105, 17) // 1 usdc = 10 dai + 5% premium
+      await bamm.liquidateBorrow(joe, debtToLiquidate, cDAI.address, {from: whale})
       const aDAIToken = await MockToken.at(aDAI)
-      await aDAIToken.approve(cDAI.address, balance, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
-      console.log("transfer to bamm")
-      await cDAI.transfer(bamm.address, balance, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      assert(inWeiRadius((await aDAIToken.balanceOf(bamm.address)).toString(), expectedLiquidationProceeds.toString(), 1e6))
 
-      // setup a price feed
-      console.log("setup price feed")
-      const priceFeed = await FakeChainlink.new({from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
-      console.log("set price to 2")
-      await priceFeed.setPrice(dec(2,18),{from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      console.log("done")
+    })
 
-      console.log("add collateral")
-      await bamm.addCollateral(cDAI.address, priceFeed.address, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+    it("swap", async () => {
+      console.log("set price feed")
+      // set 1 dai = 1 usdc
+      await priceDai2UsdcFeed.setPrice(dec(1, 18), {from: whale})
 
-      console.log("swap matic to dai")
-      const maticBalance = await aToken.balanceOf(yaron)
-      console.log("giving allowance")
-      await aToken.approve(aaveToCToken.address, maticBalance, {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      console.log("mint 1 usdc token")
+      const oneUSDC = dec(1, 6)
+      await usdc.approve(lendingPool.address, oneUSDC, {from: whale})
+      await lendingPool.deposit(usdcAddress, oneUSDC, whale, 0, {from: whale})
+
+      console.log("giving allowance of atokn")
+      await aUSDCToken.approve(aaveToCToken.address, oneUSDC, {from: whale})
 
       // swap
-      console.log("swap")
-      await bamm.swap(maticBalance, cDAI.address, 1, yaron, "0x", {from: yaron,maxFeePerGas: 99e9, maxPriorityFeePerGas: 99e9})
+      console.log("swap usdc to dai")
+      console.log("fetch price", (await bamm.fetchPrice(cDAI.address)).toString())
+      console.log("dai balance", (await cDAI.balanceOf(bamm.address)).toString())
+      const expectedSwapReturn = await bamm.getSwapAmount(oneUSDC, cDAI.address)
+      console.log("expected return", expectedSwapReturn.toString())
 
-      console.log("alice balance", (await cDAI.balanceOf(yaron)).toString())
-    })    
+      const newAddress = (await ForceEthSend.new(whale)).address
+
+      await bamm.swap(oneUSDC, cDAI.address, 1, newAddress, "0x", {from: whale})
+
+      console.log("alice balance", (await cDAI.balanceOf(newAddress)).toString())
+      assert.equal((await cDAI.balanceOf(newAddress)).toString(), expectedSwapReturn.toString())
+    })
+
+    it("withdraw all", async () => {
+      const whaleBammBalance = await bamm.balanceOf(whale)
+
+      const aUSDCBalBefore = await aUSDCToken.balanceOf(whale)
+      const aDaiBalBefore = await cDAI.balanceOf(whale)
+
+      const bammUSDCBalance = await aUSDCToken.balanceOf(bamm.address)
+      const bammDaiBalance = await cDAI.balanceOf(bamm.address)
+
+      await bamm.withdraw(whaleBammBalance, {from: whale})
+
+      const aUSDCBalAfter = await aUSDCToken.balanceOf(whale)
+      const aDaiBalAfter = await cDAI.balanceOf(whale)      
+
+      assert(in100WeiRadius(toBN(aUSDCBalAfter).sub(toBN(aUSDCBalBefore)), bammUSDCBalance))
+      assert(inWeiRadius(toBN(aDaiBalAfter).sub(toBN(aDaiBalBefore)).toString(), toBN(bammDaiBalance).toString(), 1e10))      
+    })
   })
 })
 
+
+// TODO - use atoken as collateral. not ctoken.
 
 function almostTheSame(n1, n2) {
   n1 = Number(web3.utils.fromWei(n1))
@@ -131,6 +265,23 @@ function in100WeiRadius(n1, n2) {
 
   if(x.add(toBN(100)).lt(y)) return false
   if(y.add(toBN(100)).lt(x)) return false  
+ 
+  return true
+}
+
+function inWeiRadius(n1, n2, wei) {
+  //console.log({n1}, {n2}, {wei})
+  const x = toBN(n1)
+  const y = toBN(n2)
+
+  if(x.add(toBN(wei)).lt(y)) {
+    console.log("inWeiRadius:", x.toString(), y.toString())
+    return false
+  }
+  if(y.add(toBN(wei)).lt(x)) {
+    console.log("inWeiRadius:", x.toString(), y.toString())    
+    return false
+  }
  
   return true
 }

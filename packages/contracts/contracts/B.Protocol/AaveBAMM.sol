@@ -19,13 +19,13 @@ contract AaveBAMM is HundredBAMM {
     }
 
     function addCollateral(ICToken ctoken, AggregatorV3Interface feed) override public onlyOwner {
-        IERC20(AaveToCTokenAdapter(address(ctoken)).aToken()).safeApprove(address(ctoken), uint(-1));
+        IERC20(address(ctoken)).safeApprove(address(ctoken), uint(-1));
 
         super.addCollateral(ctoken, feed);
     }
 
     function removeCollateral(ICToken ctoken) override public onlyOwner {
-        IERC20(AaveToCTokenAdapter(address(ctoken)).aToken()).safeApprove(address(ctoken), uint(0));
+        IERC20(address(ctoken)).safeApprove(address(ctoken), uint(0));
 
         super.removeCollateral(ctoken);        
     }
