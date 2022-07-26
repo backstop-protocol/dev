@@ -147,11 +147,11 @@ contract GemSeller is PriceFormula, Ownable {
         else newGemAmount = gemAmount;
     }
 
-    function gemToLUSD(uint gemQty, uint gem2EthPrice, uint eth2UsdPrice) public pure returns(uint) {
+    function gemToUSD(uint gemQty, uint gem2EthPrice, uint eth2UsdPrice) public pure returns(uint) {
         return gemQty.mul(gem2EthPrice).div(PRECISION).mul(eth2UsdPrice).div(PRECISION);
     }
 
-    function LUSDToGem(uint lusdQty, uint gem2EthPrice, uint eth2UsdPrice) public pure returns(uint) {
+    function USDToGem(uint lusdQty, uint gem2EthPrice, uint eth2UsdPrice) public pure returns(uint) {
         return lusdQty.mul(PRECISION).div(gem2EthPrice).mul(PRECISION).div(eth2UsdPrice);
     }    
 
@@ -162,15 +162,15 @@ contract GemSeller is PriceFormula, Ownable {
         uint gem2ethPrice = fetchGem2EthPrice();
         if(eth2usdPrice == 0 || gem2ethPrice == 0) return (0, 0); // feed is down
 
-        uint gemUsdValue = gemToLUSD(gemBalance, gem2ethPrice, eth2usdPrice);
-        uint maxReturn = addBps(LUSDToGem(lusdQty, gem2ethPrice, eth2usdPrice), int(maxDiscount));
+        uint gemUsdValue = gemToUSD(gemBalance, gem2ethPrice, eth2usdPrice);
+        uint maxReturn = addBps(USDToGem(lusdQty, gem2ethPrice, eth2usdPrice), int(maxDiscount));
 
         uint xQty = lusdQty;
         uint xBalance = lusdVirtualBalance;
         uint yBalance = lusdVirtualBalance.add(gemUsdValue.mul(2));
         
         uint usdReturn = getReturn(xQty, xBalance, yBalance, A);
-        uint basicGemReturn = LUSDToGem(usdReturn, gem2ethPrice, eth2usdPrice);
+        uint basicGemReturn = USDToGem(usdReturn, gem2ethPrice, eth2usdPrice);
 
         basicGemReturn = compensateForLusdDeviation(basicGemReturn);
 

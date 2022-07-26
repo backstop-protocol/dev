@@ -147,10 +147,10 @@ contract('Gem Seller', async accounts => {
       assert.equal(web3.utils.fromWei(await seller.fetchGem2EthPrice()), "0.00087731")
       assert.equal(web3.utils.fromWei(await seller.fetchEthPrice()), "1200")
 
-      assert.equal((await seller.gemToLUSD(dec(1, 18), dec(7,18), dec(1200, 18))).toString(),
+      assert.equal((await seller.gemToUSD(dec(1, 18), dec(7,18), dec(1200, 18))).toString(),
                    dec(7 * 1200, 18))
 
-      assert.equal((await seller.LUSDToGem(dec(7 * 1200, 18), dec(7,18), dec(1200, 18))).toString(),
+      assert.equal((await seller.USDToGem(dec(7 * 1200, 18), dec(7,18), dec(1200, 18))).toString(),
                    dec(1, 18))
     })
 
