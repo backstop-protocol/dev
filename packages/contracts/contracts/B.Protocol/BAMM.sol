@@ -55,7 +55,7 @@ contract BAMM is PriceFormula, GemSellerController {
         address _LQTY,
         uint _maxDiscount,
         address payable _feePool,
-        address _fronEndTag,
+        address _frontEndTag,
         uint _timelockDuration)
         GemSellerController(_LQTY, _timelockDuration)
         public
@@ -67,7 +67,7 @@ contract BAMM is PriceFormula, GemSellerController {
 
         feePool = _feePool;
         maxDiscount = _maxDiscount;
-        frontEndTag = _fronEndTag;
+        frontEndTag = _frontEndTag;
     }
 
     function setChicken(address _chicken) external onlyOwner {
