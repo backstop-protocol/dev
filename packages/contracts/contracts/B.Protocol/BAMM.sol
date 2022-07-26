@@ -10,6 +10,9 @@ import "./../Dependencies/IERC20.sol";
 import "./../Dependencies/SafeMath.sol";
 import "./../Dependencies/AggregatorV3Interface.sol";
 
+interface IChickenBondManager {
+    function getTotalLUSDInCurve() external view returns (uint);
+}
 
 contract BAMM is PriceFormula, GemSellerController {
     using SafeMath for uint256;
@@ -169,7 +172,9 @@ contract BAMM is PriceFormula, GemSellerController {
     }
 
     function getSwapEthAmount(uint lusdQty) public view returns(uint ethAmount, uint feeLusdAmount) {
-        uint lusdBalance = SP.getCompoundedLUSDDeposit(address(this));
+        uint lusdBalance = SP.getCompoundedLUSDDeposit(address(this)).add(
+                IChickenBondManager(chicken).getTotalLUSDInCurve()
+            );
         uint ethBalance  = SP.getDepositorETHGain(address(this)).add(address(this).balance);
 
         uint eth2usdPrice = fetchPrice();

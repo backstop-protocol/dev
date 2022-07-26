@@ -10,6 +10,7 @@ const TroveManagerTester = artifacts.require("TroveManagerTester")
 const LUSDToken = artifacts.require("LUSDToken")
 const NonPayable = artifacts.require('NonPayable.sol')
 const BAMM = artifacts.require("BAMM.sol")
+const MockChicken = artifacts.require("MockChicken.sol")
 const ChainlinkTestnet = artifacts.require("ChainlinkTestnet.sol")
 
 const ZERO = toBN('0')
@@ -54,6 +55,7 @@ contract('BAMM', async accounts => {
   let gasPriceInWei
 
   let chicken
+  let chickenPrep = defaulter_3
 
   const feePool = "0x1000000000000000000000000000000000000001"
   const lqtySeller = "0x1000000000000000000000000000000000000002"
@@ -105,7 +107,7 @@ contract('BAMM', async accounts => {
       const kickbackRate_F1 = toBN(dec(5, 17)) // F1 kicks 50% back to depositor
       await stabilityPool.registerFrontEnd(kickbackRate_F1, { from: frontEnd_1 })
 
-      chicken = defaulter_3
+      chicken = await MockChicken.new()
 
       bamm = await BAMM.new(chainlink.address,
                             lusdChainlink.address,
@@ -119,7 +121,7 @@ contract('BAMM', async accounts => {
                             {from: bammOwner})
 
       await bamm.setSeller(lqtySeller, {from: bammOwner})
-      await bamm.setChicken(chicken, {from: bammOwner})
+      await bamm.setChicken(chicken.address, {from: bammOwner})
 
       await lusdChainlink.setPrice(dec(1,18)) // 1 LUSD = 1 USD
     })
@@ -128,11 +130,11 @@ contract('BAMM', async accounts => {
     // increases recorded LUSD at Stability Pool
     it("deposit(): increases the Stability Pool LUSD balance", async () => {
       // --- SETUP --- Give Alice a least 200
-      await openTrove({ extraLUSDAmount: toBN(200), ICR: toBN(dec(2, 18)), extraParams: { from: chicken } })
+      await openTrove({ extraLUSDAmount: toBN(200), ICR: toBN(dec(2, 18)), extraParams: { from: chickenPrep } })
 
       // --- TEST ---
-      await lusdToken.approve(bamm.address, toBN(200), { from: chicken })
-      await bamm.deposit(toBN(200), { from: chicken })
+      await lusdToken.transfer(chicken.address, toBN(200), {from: chickenPrep})
+      await chicken.deposit(toBN(200), bamm.address)
 
       // check LUSD balances after
       const stabilityPool_LUSD_After = await stabilityPool.getTotalLUSDDeposits()
@@ -143,14 +145,14 @@ contract('BAMM', async accounts => {
     // increases recorded LUSD at Stability Pool
     it("deposit(): user deposit, withdraw.", async () => {
       // --- SETUP --- Give Alice a least 200
-      await openTrove({ extraLUSDAmount: toBN(200), ICR: toBN(dec(2, 18)), extraParams: { from: chicken } })
+      await openTrove({ extraLUSDAmount: toBN(200), ICR: toBN(dec(2, 18)), extraParams: { from: chickenPrep } })
 
       // --- TEST ---
-      await lusdToken.approve(bamm.address, toBN(200), { from: chicken })
-      await bamm.deposit(toBN(200), { from: chicken })
+      await lusdToken.transfer(chicken.address, toBN(200), {from: chickenPrep})
+      await chicken.deposit(toBN(200), bamm.address)      
 
-      await bamm.withdraw(toBN(150), whale, { from: chicken });
-      await bamm.withdraw(toBN(50), alice, { from: chicken });
+      await chicken.withdraw(toBN(150), bamm.address, whale)
+      await chicken.withdraw(toBN(50), bamm.address, alice)      
 
       assert.equal((await lusdToken.balanceOf(whale)).toString(), toBN(150).toString())
       assert.equal((await lusdToken.balanceOf(alice)).toString(), toBN(50).toString())
@@ -160,10 +162,11 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(2, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(whaleLUSD, { from: chicken } )
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(2, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
+
+      const whaleLUSD = await lusdToken.balanceOf(chickenPrep)
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})      
+      await chicken.deposit(whaleLUSD, bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
@@ -216,12 +219,12 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
 
       // deposit once
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(dec(1000, 18), { from: chicken } )
+      const whaleLUSD = await lusdToken.balanceOf(chickenPrep)
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})
+      await chicken.deposit(dec(1000, 18), bamm.address)
 
 
       // send some ETH to simulate partial rebalance
@@ -229,10 +232,10 @@ contract('BAMM', async accounts => {
       assert.equal(toBN(await web3.eth.getBalance(bamm.address)).toString(), toBN(dec(1, 18)).toString())
 
       // deposit again
-      await bamm.deposit(dec(3000, 18), { from: chicken } )      
+      await chicken.deposit(dec(3000, 18), bamm.address)
 
       // withdraw
-      await bamm.withdraw(dec(4000, 18), A, {from: chicken})
+      await chicken.withdraw(dec(4000, 18), bamm.address, A)
 
       // check that lusd reached its destination
       assert.equal((await lusdToken.balanceOf(A)), dec(4000,18))
@@ -245,11 +248,10 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
       
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(toBN(dec(10000, 18)), { from: chicken } )
+      await lusdToken.transfer(chicken.address, toBN(dec(10000, 18)), {from: chickenPrep})
+      await chicken.deposit(toBN(dec(10000, 18)), bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
@@ -296,11 +298,11 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
       
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(toBN(dec(10000, 18)), { from: chicken } )
+      const whaleLUSD = toBN(dec(10000, 18))
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})
+      await chicken.deposit(whaleLUSD, bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
@@ -316,10 +318,11 @@ contract('BAMM', async accounts => {
 
       // 4k liquidations
       assert.equal(toBN(dec(6000, 18)).toString(), (await stabilityPool.getCompoundedLUSDDeposit(bamm.address)).toString())
+      await chicken.setLUSDInCurve(dec(1000, 18))
       const ethGains = web3.utils.toBN("39799999999999999975")
 
       const lusdQty = dec(105, 18)
-      const expectedReturn = await bamm.getReturn(lusdQty, dec(6000, 18), toBN(dec(6000, 18)).add(ethGains.mul(toBN(2 * 105))), 200)
+      const expectedReturn = await bamm.getReturn(lusdQty, dec(7000, 18), toBN(dec(7000, 18)).add(ethGains.mul(toBN(2 * 105))), 200)
 
       // without fee
       await bamm.setParams(200, 0, {from: bammOwner})
@@ -362,13 +365,12 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
       await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: whale, value: dec(50, 'ether') } })      
       
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      
-      await bamm.deposit(toBN(dec(10000, 18)), { from: chicken } )
+      const whaleLUSD = toBN(dec(10000, 18))
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})
+      await chicken.deposit(whaleLUSD, bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
@@ -413,12 +415,12 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(20, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
 
       
-      const whaleLUSD = await lusdToken.balanceOf(chicken)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(toBN(dec(10000, 18)), { from: chicken } )
+      const whaleLUSD = toBN(dec(10000, 18))
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})
+      await chicken.deposit(whaleLUSD, bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
@@ -477,10 +479,10 @@ contract('BAMM', async accounts => {
       // --- SETUP ---
 
       // Whale opens Trove and deposits to SP
-      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(2, 18)), extraParams: { from: chicken, value: dec(50, 'ether') } })
+      await openTrove({ extraLUSDAmount: toBN(dec(10000, 18)), ICR: toBN(dec(2, 18)), extraParams: { from: chickenPrep, value: dec(50, 'ether') } })
       const whaleLUSD = dec(10000, 18)
-      await lusdToken.approve(bamm.address, whaleLUSD, { from: chicken })
-      await bamm.deposit(whaleLUSD, { from: chicken } )
+      await lusdToken.transfer(chicken.address, whaleLUSD, {from: chickenPrep})
+      await chicken.deposit(whaleLUSD, bamm.address)
 
       // 2 Troves opened, each withdraws minimum debt
       await openTrove({ extraLUSDAmount: 0, ICR: toBN(dec(2, 18)), extraParams: { from: defaulter_1, } })
