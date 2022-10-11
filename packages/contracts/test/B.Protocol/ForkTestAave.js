@@ -188,9 +188,26 @@ contract('BAMM', async accounts => {
       const lowPrice = toBN(await oracle.getAssetPrice(usdcAddress)).div(toBN(10))
       await daiPriceOracle.setPrice(lowPrice.toString())
 
-      console.log("calling liquidate borrow")
       const debtToLiquidate = dec(1, 6)
       const expectedLiquidationProceeds = dec(105, 17) // 1 usdc = 10 dai + 5% premium
+
+      console.log("testing can liquidate1")
+      const canLiq1 = await bamm.canLiquidate(usdcAddress, daiAddress, debtToLiquidate)
+      assert.equal(canLiq1, true, "expected to be able to liquidate")
+
+      console.log("testing can liquidate2")
+      const canLiq2 = await bamm.canLiquidate(usdcAddress, daiAddress, dec(10000000, 18))      
+      assert.equal(canLiq2, false, "expected to not be able to liquidate when not enough balance")
+
+      console.log("testing can liquidate3")
+      const canLiq3 = await bamm.canLiquidate(usdcAddress, cDAI.address, debtToLiquidate)
+      assert.equal(canLiq3, false, "expected not to be able to liquidate when collateral is invalid")      
+
+      console.log("testing can liquidate4")
+      const canLiq4 = await bamm.canLiquidate(cDAI.address, daiAddress, debtToLiquidate)
+      assert.equal(canLiq4, false, "expected not to be able to liquidate when debt is invalid")      
+
+      console.log("calling liquidate borrow")
       await bamm.liquidateBorrow(joe, debtToLiquidate, cDAI.address, {from: whale})
       const aDAIToken = await MockToken.at(aDAI)
       assert(inWeiRadius((await aDAIToken.balanceOf(bamm.address)).toString(), expectedLiquidationProceeds.toString(), 1e6))

@@ -29,4 +29,37 @@ contract AaveBAMM is HundredBAMM {
 
         super.removeCollateral(ctoken);        
     }
+
+    function canLiquidate(
+        ICToken cTokenBorrowed,
+        ICToken cTokenCollateral,
+        uint repayAmount
+    )
+        external
+        view
+        override
+        returns(bool)
+    {
+        if(address(cTokenBorrowed) != address(cBorrow.underlying())) return false;
+        bool validCollateral = false;
+        for(uint i = 0 ; i < collaterals.length ; i++) {
+            if(address(cTokenCollateral) == IAToken(address(collaterals[i])).UNDERLYING_ASSET_ADDRESS()) {
+                validCollateral = true;
+                break;
+            }
+        }
+
+        if(! validCollateral) return false;
+
+        // check if there is sufficient balance at the backstop
+        (uint err, uint ctokenBalance, /* borrow balance */, uint exchangeRateMantissa) = cBorrow.getAccountSnapshot(address(this));
+        if(err != 0) return false;
+
+        uint underlyingBalance = ctokenBalance.mul(exchangeRateMantissa) / 1e18;
+
+        if(repayAmount > underlyingBalance) return false;
+        if(repayAmount > cBorrow.getCash()) return false;
+
+        return true;
+    }
 }

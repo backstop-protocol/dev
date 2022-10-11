@@ -316,6 +316,7 @@ contract BAMM is TokenAdapter, PriceFormula, Ownable, ReentrancyGuard {
     )
         external
         view
+        virtual
         returns(bool)
     {
         if(cTokenBorrowed != cBorrow) return false;
