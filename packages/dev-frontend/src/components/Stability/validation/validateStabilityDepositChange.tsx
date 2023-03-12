@@ -75,7 +75,7 @@ export const validateStabilityDepositChange = (
       </ErrorDescription>
     ];
   }
-  if(change && change.depositLUSD?.gt(bammAllowance.toString())) {
+  if(change && change.depositLUSD?.gt(Decimal.fromBigNumberString(bammAllowance.toString()))) {
     return [
       undefined,
       <ErrorDescription>
