@@ -1,8 +1,8 @@
 const Web3 = require("web3")
 const axios = require("axios")
 
-const secret = require("./secret.json")
-const configJson = require("./config.json")
+const secret = require(`./${process.env.DAPP_BLOCKCHAIN}/secret.json`)
+const configJson = require(`./${process.env.DAPP_BLOCKCHAIN}/config.json`)
 const abi = require("./abi.json")
 const web3 = new Web3(secret.nodeEndPoint)
 const {uploadJsonFile} = require("./s3-client")

@@ -78,7 +78,7 @@ contract('BAMM', async accounts => {
     })
 
 
-    it.only("Arb iotex", async () => {
+    it("Arb iotex", async () => {
       const router = "0x95cB18889B968AbABb9104f30aF5b310bD007Fd8"
       const wmatic = "0xA00744882684C3e4747faEFD68D283eA44099D03"
       const hmatic = "0x243E33aa7f6787154a8E59d3C27a66db3F8818ee"
@@ -100,6 +100,46 @@ contract('BAMM', async accounts => {
 
         console.log("set max attempts to 3")
         await keeper.setMaxQtyAttempts(3)
+
+        console.log("trying to find smallest qty")
+        const res = await keeper.findSmallestQty.call({gas: 100000000})
+        console.log({res})        
+      }
+
+      console.log({keepers})
+/*      
+      console.log("calling upkeep")
+      const resUp = await keeper.checkUpkeep.call("0x",{gas: 100000000})
+      console.log({resUp})
+      console.log("calling perform")
+      await keeper.performUpkeep(resUp.performData)
+      console.log("done")
+*/
+
+    })  
+
+    it.only("Arb fantom", async () => {
+      const router = "0xF491e7B69E4244ad4002BC14e878a34207E38c29"
+      const wFTM = "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83"
+      const hFTM = "0xfCD8570AD81e6c77b8D252bEbEBA62ed980BD64D"
+
+      const iotexBamms = ["0xD3f08B1c4861dacC3ce539B9F4748AA25dCb72aE","0x3A87b540F7EaeC7b20902039818B5Ea78F984305", "0x1346e106b4E2558DAACd2E8207505ce7E31e05CA", "0x01ba129F27df71ADfeDdf2447eFD8698B718D593"]
+      const keepers = []
+
+      for(const bamm of iotexBamms) {
+        console.log("deploying keepers")
+        const keeper = await Keeper.new(router, wFTM, hFTM, false)
+        console.log(keeper.address)
+        keepers.push(keeper)
+
+        console.log("adding 1 bamm")
+        await keeper.addBamm(bamm)
+
+        console.log("setting min profit to 100000000")
+        await keeper.setMinProfitInUSD("1000000000000000")
+
+        console.log("set max attempts to 3")
+        await keeper.setMaxQtyAttempts(2)
 
         console.log("trying to find smallest qty")
         const res = await keeper.findSmallestQty.call({gas: 100000000})

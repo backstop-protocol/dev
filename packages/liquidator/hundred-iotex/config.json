@@ -1,0 +1,18 @@
+{
+  "fileName": "liquidatorStoredData_hundred_iotex.json",
+  "comptrollerAddress" : "0x8c6139ff1e9d7c1e32bdafd79948d0895ba0a831",
+  "helperAddress" : "0x355d1146e172f717daDC86ff5ad47A11eEbdcf48",
+  "startBlock" : 14580532,
+  "bammAddresses" : [
+      "0xCE0A876996248421606F4ad8a09B1D3E15f69EfB",
+      "0x4Db1d29eA5b51dDADcc5Ab26709dDA49e7eB1E71", 
+      "0x8cF0B1c886Ee522427ef57F5601689352F8161eb", 
+      "0x7D30d048F8693aF30A10aa5D6d281A7A7E6E1245"
+  ],
+  "keeperAddress" : [
+      "0x0F0dD66D2d6c1f3b140037018958164c6AB80d56",
+      "0xe749E89969b897C41c61662b930cf0B8F426B622", 
+      "0x1EcF1b0DE9b4c2D01554062eA2faB84b1917B41d", 
+      "0x998Bf304Ce9Cb215F484aA39d1177b8210078f49"
+  ]
+}
