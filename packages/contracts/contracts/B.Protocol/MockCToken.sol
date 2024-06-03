@@ -144,3 +144,55 @@ contract MockUnitroller {
 
     }
 }
+
+
+contract MockAave {
+    function getLendingPool() external pure returns (address) {
+        return address(0);
+    }
+
+    function getPriceOracle() external pure returns (address) {
+        return address(0);
+    }
+
+    function deposit(
+        address asset,
+        uint256 amount,
+        address onBehalfOf,
+        uint16 referralCode
+    ) external
+    {
+
+    }
+
+    function borrow(
+        address asset,
+        uint256 amount,
+        uint256 interestRateMode,
+        uint16 referralCode,
+        address onBehalfOf
+    ) external
+    {
+
+    }
+
+    function setAssetSources(address[] calldata assets, address[] calldata sources)
+        external
+    {
+
+    }
+
+    function owner() external pure returns(address) {
+        return address(0);
+    }
+
+    function getAssetPrice(address asset) external pure returns(uint) {
+        return 8;
+    }
+}
+
+contract ForceEthSend {
+    constructor(address payable dest) public payable {
+        selfdestruct(dest);
+    }
+}
